@@ -4,5 +4,6 @@ reduced_data*
 projetZZ3 alias
 *.db
 __pycache__
+*.DS_Store
 .vscode
 .env
