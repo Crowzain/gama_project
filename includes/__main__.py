@@ -5,6 +5,7 @@ from typing import Iterable
 from dotenv import load_dotenv
 import os
 import re
+from enum import Enum
 
 load_dotenv()
 
@@ -13,8 +14,6 @@ PROJECT_ROOT = Path(".")
 REDUCED_DATA_PATH = PROJECT_ROOT / "reduced_data"
 SHAPEFILE_REPERTORY_PATH = PROJECT_ROOT / "/ile-de-france-260112-free.shp"
 GTFS_REPERTORY_PATH = PROJECT_ROOT / "IDFM-gtfs"
-
-DATABASE_PATH = PROJECT_ROOT / "gama_project.db"
 
 @dataclass(frozen=True)
 class box:
@@ -27,48 +26,83 @@ class box:
 	bottom: float
 	top: float
 
+class DB_TYPE(Enum):
+	DUCKDB = 0,
+	MY_SQL = 1,
+	SQLITE = 2
+
+DB_NAME_DICT = {
+	"DUCKDB": "",
+	"MY_SQL": "mysql_db",
+	"SQLITE" : "gama_project_sqlite"
+}
+
+DB_PATH_DICT = {
+	"DUCKDB": PROJECT_ROOT / "gama_project.db",
+	"MY_SQL": PROJECT_ROOT,
+	"SQLITE" : PROJECT_ROOT / "gama_project_sqlite.db"
+}
+
 default_box_13 = box(2.2577, 2.4115, 48.8186, 48.8988)
 default_box_10 = box(2.34425, 2.37996, 48.86866, 48.88444)
 
-
-def create_db_duckdb(
-		db_path:Path|str|None=None,
-		insert_gtfs:bool=True,
-		verbose:bool=False,
-		box:box|None=None
-	)->None:
+def connect_db(
+		db_type:DB_TYPE,
+	)->dd.DuckDBPyConnection:
 	
-	if db_path is None:
-		db_path = DATABASE_PATH
-	else:
-		if isinstance(db_path, str):
-			db_path = Path(db_path)
-	con = dd.connect(db_path)
+	
+	
 
-	if insert_gtfs:
-		create_tables_duckdb(db_path, con, verbose=verbose, box=box)
+	match db_type:
+		case DB_TYPE.SQLITE:
+			con = dd.connect(DB_PATH_DICT["SQLITE"])
+			con = con.execute("INSTALL sqlite;")
+			con = con.execute("LOAD sqlite;")
+		case DB_TYPE.MY_SQL:
+			con = dd.connect()
+			con = con.execute("INSTALL mysql;")
+			con = con.execute("LOAD mysql;")
+			con = con.execute("""
+				CREATE SECRET (
+				TYPE mysql,
+				HOST '127.0.0.1',
+				PORT $port,
+				DATABASE $database,
+				USER 'root',
+				PASSWORD $passwd
+			);
+			""",
+			{
+				"port":os.environ["PORT1"],
+				"database":os.environ["DATABASE"],
+				"passwd":os.environ["PASSWD"],
+			}
+			)
+			port = int(os.environ["PORT1"])
+			database = os.environ["DATABASE"]
 
-	return None
+			if not re.match(r'^[a-zA-Z0-9_]+$', database): raise ValueError("Invalid database name")
+			con = con.execute(f"""
+					ATTACH 'host=localhost user=root port={port} database={database}' AS {DB_NAME_DICT["MY_SQL"]} (TYPE mysql);
+					""")
+			con = con.execute("""USE mysql_db;""")
+		case DB_TYPE.DUCKDB:
+			con = dd.connect(DB_PATH_DICT[db_type.name])
+		case _:
+			con = dd.connect(DB_PATH_DICT[db_type.name])
+	return con
 
-
-def create_tables_duckdb(
-		db_path:Path|str|None=None,
+def create_tables(
+		db_type:DB_TYPE,
 		con:dd.DuckDBPyConnection|None=None,
 		input_path:str|Path|None=None,
 		tables:Iterable[str]|None=None,
 		verbose:bool=False,
 		box:box|None=None
-	)->None:
+	)->dd.DuckDBPyConnection:
 	
-	if db_path is None:
-		db_path = DATABASE_PATH
-	else:
-		if isinstance(db_path, str):
-			db_path = Path(db_path)
-		if not db_path.exists():
-			raise Exception("Error: database does not exist, create it.")
 	if con is None:
-		con = dd.connect(db_path, read_only=False)
+		con = connect_db(db_type)
 
 	if input_path is None:
 		input_path = GTFS_REPERTORY_PATH
@@ -80,124 +114,44 @@ def create_tables_duckdb(
 	if tables is None:
 		tables = map((lambda x: x.stem), input_path.rglob('*.txt'))
 
-	for table in tables:
-		if "stops" == table and box is not None:
-			create_table_query = f"""
-				CREATE OR REPLACE TABLE {f"mysql_db.mysql_db.{table}"} AS SELECT * FROM read_csv('{f'{GTFS_REPERTORY_PATH/table}.txt'}')
-				WHERE lon>=$left AND lon<=$right AND lat>=$bottom AND lat<=$top;
-			"""
-			con.execute(create_table_query, parameters={
-				"left": box.left, 
-				"right": box.right, 
-				"bottom": box.bottom, 
-				"top": box.top})
-		else:
-			print(f"mysql_db.{table}")
-			create_table_query = f"""
-				CREATE OR REPLACE TABLE {f"mysql_db.mysql_db.{table}"} AS SELECT * FROM read_csv('{f'{GTFS_REPERTORY_PATH/table}.txt'}')
-			"""
-			con.execute(create_table_query)
-		
-	if verbose:
-		con.sql(f"SHOW ALL TABLES;").show()
-
-	return None
-
-
-
-
-def connect_mysql_db(
-		insert_gtfs:bool=True,
-		verbose:bool=False,
-		box:box|None=None
-	)->dd.DuckDBPyConnection:
-	
-	
-	con = dd.connect()
-	con = con.execute("INSTALL mysql;")
-	con = con.execute("LOAD mysql;")
-	con = con.execute("""
-		CREATE SECRET (
-		TYPE mysql,
-		HOST '127.0.0.1',
-		PORT $port,
-		DATABASE $database,
-		USER 'root',
-		PASSWORD $passwd
-  	);
-	""",
-	{
-		"port":os.environ["PORT1"],
-		"database":os.environ["DATABASE"],
-		"passwd":os.environ["PASSWD"],
-	}
+	prefix = (None,
+		   f"{DB_NAME_DICT["MY_SQL"]}.{DB_NAME_DICT["MY_SQL"]}",
+		   f"{DB_NAME_DICT["SQLITE"]}.main"
 	)
-	port = int(os.environ["PORT1"])
-	database = os.environ["DATABASE"]
-
-	if not re.match(r'^[a-zA-Z0-9_]+$', database): raise ValueError("Invalid database name")
-	con = con.execute(f"""
-			ATTACH 'host=localhost user=root port={port} database={database}' AS mysql_db (TYPE mysql);
-			""")
-	con = con.execute("""USE mysql_db;""")
-
-	if insert_gtfs:
-		con = create_tables(con, verbose=verbose, box=box)
-
-	return con
-
-
-def create_tables(
-		con:dd.DuckDBPyConnection,
-		input_path:str|Path|None=None,
-		tables:Iterable[str]|None=None,
-		verbose:bool=False,
-		box:box|None=None
-	)->dd.DuckDBPyConnection:
-		
-	if input_path is None:
-		input_path = GTFS_REPERTORY_PATH
-	else:
-		if isinstance(input_path, str): input_path = Path(input_path)
-		if not input_path.exists():
-			raise BaseException(f"input path {input_path} does not exist.")
-		
-	if tables is None:
-		tables = map((lambda x: x.stem), input_path.rglob('*.txt'))
-
 	for table in tables:
 		if "stops" == table and box is not None:
 			create_table_query = f"""
-				CREATE OR REPLACE TABLE {f"mysql_db.mysql_db.{table}"} AS SELECT * FROM read_csv('{f'{GTFS_REPERTORY_PATH/table}.txt'}')
-				WHERE lon BETWEEN $left AND $right 
-				AND lat BETWEEN $bottom AND $top;
+				CREATE OR REPLACE TABLE $table AS SELECT * FROM read_csv($input_file)
+				WHERE lon>=$left AND lon<=$right AND stop_lat>=$bottom AND stop_lat<=$top;
 			"""
 			con.execute(create_table_query, parameters={
+				"table": f"{prefix[db_type.value]}.{table}" if db_type!=DB_TYPE.DUCKDB else table,
+				"input_file": f"{GTFS_REPERTORY_PATH/table}.txt",
 				"left": box.left, 
 				"right": box.right, 
 				"bottom": box.bottom, 
 				"top": box.top})
 		else:
-			print(f"mysql_db.{table}")
+			print(f"{DB_NAME_DICT[db_type.name]}.{table}")
 			create_table_query = f"""
-				CREATE OR REPLACE TABLE {f"mysql_db.mysql_db.{table}"} AS SELECT * FROM read_csv('{f'{GTFS_REPERTORY_PATH/table}.txt'}')
+				CREATE OR REPLACE TABLE {f"{prefix[db_type.value]}.{table}" if db_type!=DB_TYPE.DUCKDB else table} AS 
+				SELECT * FROM read_csv('{f'{GTFS_REPERTORY_PATH/table}.txt'}', delim=','); 
 			"""
 			con.execute(create_table_query)
 		
 	if verbose:
 		con.sql(f"SHOW ALL TABLES;").show()
-
 	return con
 
 
 def reduce_shapefiles(
 		box:box,
 	)->None:
-	con = dd.connect(DATABASE_PATH)
+	con = dd.connect()
 	con.execute("INSTALL spatial;")
 	con.execute("LOAD spatial;")
 	reduce_roads(box, con)
-	#reduce_bus_stop(box, con)
+	reduce_stops(box, con)
 	reduce_buildings(box, con)
 
 	return None
@@ -211,15 +165,14 @@ def reduce_roads(
 		last_road_type_code:int=5135,
 	)->None:
 	if con is None:
-		con = dd.connect(DATABASE_PATH)
-		con.execute("INSTALL spatial;")
-		con.execute("LOAD spatial;")
+		con = dd.connect()
+	con.execute("INSTALL spatial;")
+	con.execute("LOAD spatial;")
 
 	if roads_path is None:
 		roads_path = SHAPEFILE_REPERTORY_PATH / "gis_osm_roads_free_1.shp"
 	if reduced_roads_path is None:
 		reduced_roads_path = REDUCED_DATA_PATH / "reduced_roads.shp"
-	print(str(roads_path))
 	con.execute(
 		f"""
 			COPY (SELECT * FROM ST_ReadSHP($input_file)
@@ -248,9 +201,10 @@ def reduce_buildings(
 		apartments_office_only:bool=False
 )->None:
 	if con is None:
-		con = dd.connect(DATABASE_PATH)
-		con.execute("INSTALL spatial;")
-		con.execute("LOAD spatial;")
+		con = dd.connect()
+	con.execute("INSTALL spatial;")
+	con.execute("LOAD spatial;")
+	
 	if building_path is None:
 		building_path = SHAPEFILE_REPERTORY_PATH / "gis_osm_buildings_a_free_1.shp"
 	if reduced_building_path is None:
@@ -274,18 +228,49 @@ def reduce_buildings(
 	)
 	return None
 
+def reduce_stops(
+		box:box,
+		con:dd.DuckDBPyConnection|None=None,
+		reduced_stops_path:Path|str|None=None,
+)->None:
+	if con is None:
+		con = dd.connect()
+	con.execute("INSTALL spatial;")
+	con.execute("LOAD spatial;")
+
+	if reduced_stops_path is None:
+		reduced_stops_path = REDUCED_DATA_PATH / "reduced_stops.shp"
+	
+	con.execute(
+		f"""
+			COPY (SELECT stop_id, ST_Point2D(stop_lon, stop_lat) AS geom FROM stops
+			WHERE stop_lat BETWEEN $bottom AND $top
+			AND stop_lon BETWEEN $left AND $right) TO $output_file
+			WITH (FORMAT gdal, DRIVER 'ESRI Shapefile', LAYER_CREATION_OPTIONS 'WRITE_BBOX=YES', SRS 'EPSG:4326');
+		""",
+		{
+			"output_file": str(reduced_stops_path),
+			"left": box.left, 
+			"bottom": box.bottom, 
+			"right": box.right, 
+			"top": box.top
+		}
+	)
+	return None
+
 
 def get_reduce_bus_stop(
 		box:box,
-		con:dd.DuckDBPyConnection,
+		con:dd.DuckDBPyConnection|None,
 		stops_threshold_line:int=20,
-		nb_lines_max:int=10,
+		nb_lines_max:int=100,
+		write_file:bool=False
 	)->None:
 	
-	
-	con = dd.connect(DATABASE_PATH)
-	#stop_path = SHAPEFILE_REPERTORY_PATH / "gis_osm_buildings_a_free_1.shp"
-	#reduced_path_path = REDUCED_DATA_PATH / "reduced_stop.shp"
+	if con is None:
+		con = connect_db(DB_TYPE.DUCKDB)
+	con.execute("INSTALL spatial;")
+	con.execute("LOAD spatial;")
 
 	con.execute("""
 		SELECT DISTINCT ON(route_id) route_id, LIST(stop_id) AS stop_sequence FROM trips
@@ -309,13 +294,33 @@ def get_reduce_bus_stop(
 			"nb_lines": nb_lines_max
 		}
 	)
-	print(con.fetch_df())
+	output = con.fetchall()
+	if write_file:
+		new_file_lines = REDUCED_DATA_PATH/"lines.txt"
+		with open(new_file_lines, "a+") as f1:
+			f1.write("name\n")
+			for line in output:
+				new_file = REDUCED_DATA_PATH/f"{line[0]}.txt"
+				with open(new_file, "a+") as f:
+					f.write(f"{line[0]}\n")
+					f1.write(f"{line[0]}\n")
+					for stop in line[1]:
+						f.write(f"{stop}\n")
 	return None
 
-con = connect_mysql_db(insert_gtfs=False, verbose=False)
-con2 = dd.connect(DATABASE_PATH)
-get_reduce_bus_stop(default_box_10, con)
-get_reduce_bus_stop(default_box_10, con2)
 
 
-#reduce_shapefiles(default_box_10)
+con = connect_db(DB_TYPE.DUCKDB)
+con2 = connect_db(DB_TYPE.MY_SQL)
+con3 = connect_db(DB_TYPE.SQLITE)
+
+#create_tables(DB_TYPE.DUCKDB, con)
+#create_tables(DB_TYPE.MY_SQL, con2)
+create_tables(DB_TYPE.SQLITE, con3)
+#get_reduce_bus_stop(default_box_10, con, write_file=False)
+#get_reduce_bus_stop(default_box_10, con2, write_file=False)
+con3.sql("SHOW ALL TABLES;").show()
+get_reduce_bus_stop(default_box_10, con3, write_file=False)
+
+
+reduce_shapefiles(default_box_10)
