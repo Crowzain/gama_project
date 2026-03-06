@@ -44,14 +44,11 @@ DB_PATH_DICT = {
 }
 
 default_box_13 = box(2.2577, 2.4115, 48.8186, 48.8988)
-default_box_10 = box(2.34425, 2.37996, 48.86866, 48.88444)
+default_box_10 = box(2.34781, 2.37206, 48.86700, 48.88456)
 
 def connect_db(
 		db_type:DB_TYPE,
 	)->dd.DuckDBPyConnection:
-	
-	
-	
 
 	match db_type:
 		case DB_TYPE.SQLITE:
@@ -120,9 +117,10 @@ def create_tables(
 	)
 	for table in tables:
 		if "stops" == table and box is not None:
-			create_table_query = f"""
-				CREATE OR REPLACE TABLE $table AS SELECT * FROM read_csv($input_file)
-				WHERE lon>=$left AND lon<=$right AND stop_lat>=$bottom AND stop_lat<=$top;
+			create_table_query = """
+				CREATE OR REPLACE TABLE $table AS 
+					SELECT * FROM read_csv($input_file)
+					WHERE lon>=$left AND lon<=$right AND stop_lat>=$bottom AND stop_lat<=$top;
 			"""
 			con.execute(create_table_query, parameters={
 				"table": f"{prefix[db_type.value]}.{table}" if db_type!=DB_TYPE.DUCKDB else table,
@@ -131,13 +129,29 @@ def create_tables(
 				"right": box.right, 
 				"bottom": box.bottom, 
 				"top": box.top})
-		else:
-			print(f"{DB_NAME_DICT[db_type.name]}.{table}")
+		elif "stop_times" == table:
+			
 			create_table_query = f"""
 				CREATE OR REPLACE TABLE {f"{prefix[db_type.value]}.{table}" if db_type!=DB_TYPE.DUCKDB else table} AS 
-				SELECT * FROM read_csv('{f'{GTFS_REPERTORY_PATH/table}.txt'}', delim=','); 
+					SELECT * REPLACE (
+							CAST(arrival_time AS TIME) AS arrival_time, 
+							CAST(departure_time AS TIME) AS departure_time
+							) 
+					FROM read_csv($input_file)
+					WHERE CAST (arrival_time[1:2] AS INT)<24 AND CAST (departure_time[1:2] AS INT)<24;
 			"""
-			con.execute(create_table_query)
+			con.execute(create_table_query, parameters={
+				"input_file": f"{GTFS_REPERTORY_PATH/table}.txt"
+				})
+		else:
+			print(table)
+			create_table_query = f"""
+				CREATE OR REPLACE TABLE {f"{prefix[db_type.value]}.{table}" if db_type!=DB_TYPE.DUCKDB else table} AS 
+					SELECT * FROM read_csv($input_file)
+			"""
+			con.execute(create_table_query, parameters={
+				"input_file": f"{GTFS_REPERTORY_PATH/table}.txt",
+				})
 		
 	if verbose:
 		con.sql(f"SHOW ALL TABLES;").show()
@@ -145,11 +159,9 @@ def create_tables(
 
 
 def reduce_shapefiles(
+		con:dd.DuckDBPyConnection,
 		box:box,
 	)->None:
-	con = dd.connect()
-	con.execute("INSTALL spatial;")
-	con.execute("LOAD spatial;")
 	reduce_roads(box, con)
 	reduce_stops(box, con)
 	reduce_buildings(box, con)
@@ -172,12 +184,14 @@ def reduce_roads(
 	if roads_path is None:
 		roads_path = SHAPEFILE_REPERTORY_PATH / "gis_osm_roads_free_1.shp"
 	if reduced_roads_path is None:
+		for file in Path.glob(REDUCED_DATA_PATH, "*reduced_roads*"):
+			file.unlink()
 		reduced_roads_path = REDUCED_DATA_PATH / "reduced_roads.shp"
 	con.execute(
-		f"""
-			COPY (SELECT * FROM ST_ReadSHP($input_file)
+		"""
+			COPY (SELECT osm_id, code, name, maxspeed, geom, ST_Length_Spheroid(geom) AS length FROM ST_ReadSHP($input_file)
 			WHERE ST_Contains(ST_MakeEnvelope($left, $bottom, $right, $top), geom) AND
-			code <= $last_road_type_code) TO $output_file
+			code <= $last_road_type_code AND maxspeed>0) TO $output_file
 			WITH (FORMAT gdal, DRIVER 'ESRI Shapefile', LAYER_CREATION_OPTIONS 'WRITE_BBOX=YES', SRS 'EPSG:4326');
 		""",
 		{
@@ -208,6 +222,8 @@ def reduce_buildings(
 	if building_path is None:
 		building_path = SHAPEFILE_REPERTORY_PATH / "gis_osm_buildings_a_free_1.shp"
 	if reduced_building_path is None:
+		for file in Path.glob(REDUCED_DATA_PATH, "*reduced_buildings*"):
+			file.unlink()
 		reduced_building_path = REDUCED_DATA_PATH / "reduced_buildings.shp"
 
 	con.execute(
@@ -239,13 +255,30 @@ def reduce_stops(
 	con.execute("LOAD spatial;")
 
 	if reduced_stops_path is None:
+		for file in Path.glob(REDUCED_DATA_PATH, "*reduced_stops*"):
+			file.unlink()
 		reduced_stops_path = REDUCED_DATA_PATH / "reduced_stops.shp"
 	
 	con.execute(
-		f"""
-			COPY (SELECT stop_id, ST_Point2D(stop_lon, stop_lat) AS geom FROM stops
-			WHERE stop_lat BETWEEN $bottom AND $top
-			AND stop_lon BETWEEN $left AND $right) TO $output_file
+		"""
+			COPY (
+			WITH candidate_routes AS (
+				SELECT route_id FROM routes
+				WHERE route_type==3
+			),
+			filtered_trips AS (
+				SELECT trip_id, route_id FROM trips
+				JOIN candidate_routes USING(route_id)
+			),
+			filtered_stops AS (
+				SELECT stop_id, stop_lon, stop_lat,
+				FROM stops
+				WHERE stop_lat BETWEEN $bottom AND $top
+				AND stop_lon BETWEEN $left AND $right
+			)
+			SELECT DISTINCT stop_id stop_id, ST_Point2D(stop_lon, stop_lat) AS geom FROM stop_times
+			JOIN filtered_stops USING(stop_id)
+			JOIN filtered_trips USING(trip_id)) TO $output_file
 			WITH (FORMAT gdal, DRIVER 'ESRI Shapefile', LAYER_CREATION_OPTIONS 'WRITE_BBOX=YES', SRS 'EPSG:4326');
 		""",
 		{
@@ -273,16 +306,41 @@ def get_reduce_bus_stop(
 	con.execute("LOAD spatial;")
 
 	con.execute("""
-		SELECT DISTINCT ON(route_id) route_id, LIST(stop_id) AS stop_sequence FROM trips
-  		NATURAL JOIN (SELECT * FROM routes WHERE route_type=3 AND direction_id=0 AND NOT STARTS_WITH(route_long_name, 'N'))
-  		NATURAL JOIN (SELECT * FROM stop_times 
-						WHERE stop_id in (SELECT stop_id FROM stops 
-										WHERE stop_lat BETWEEN $bottom AND $top
-										AND stop_lon BETWEEN $left AND $right)
-			 		)
-		NATURAL JOIN (SELECT * FROM calendar WHERE monday=1)
-		GROUP BY route_id 
-		HAVING len(stop_sequence)>$stops_threshold_line
+		WITH 
+			filtered_stops AS (
+				SELECT stop_id
+				FROM stops
+				WHERE stop_lat BETWEEN $bottom AND $top
+				AND stop_lon BETWEEN $left AND $right
+			),
+		
+			candidate_services AS (
+				SELECT trip_id FROM trips
+				JOIN calendar USING(service_id)
+				WHERE MONDAY AND TUESDAY AND WEDNESDAY AND THURSDAY AND FRIDAY
+			),
+			
+			candidate_routes AS (
+				SELECT route_id FROM routes
+				WHERE route_type==3
+			),
+			
+			filtered_trips AS (
+				SELECT DISTINCT ON(trip_id) trip_id, route_id FROM trips
+				JOIN candidate_services USING(trip_id)
+				JOIN candidate_routes USING(route_id)
+			),
+			
+			candidate_stops AS (
+				SELECT stop_id, trip_id FROM stop_times
+				JOIN filtered_stops USING(stop_id)
+				WHERE departure_time>make_time(7,0,0) AND arrival_time<=make_time(18,0,0)
+			)
+			 
+		SELECT DISTINCT ON(route_id) route_id, list(stop_id) FROM candidate_stops
+		JOIN filtered_trips USING (trip_id)
+		GROUP BY (trip_id, route_id)
+		HAVING COUNT(stop_id)>$stops_threshold_line
 		LIMIT $nb_lines;
 		""",
 		{
@@ -297,11 +355,11 @@ def get_reduce_bus_stop(
 	output = con.fetchall()
 	if write_file:
 		new_file_lines = REDUCED_DATA_PATH/"lines.txt"
-		with open(new_file_lines, "a+") as f1:
+		with open(new_file_lines, "w") as f1:
 			f1.write("name\n")
 			for line in output:
 				new_file = REDUCED_DATA_PATH/f"{line[0]}.txt"
-				with open(new_file, "a+") as f:
+				with open(new_file, "w") as f:
 					f.write(f"{line[0]}\n")
 					f1.write(f"{line[0]}\n")
 					for stop in line[1]:
@@ -311,16 +369,15 @@ def get_reduce_bus_stop(
 
 
 con = connect_db(DB_TYPE.DUCKDB)
-con2 = connect_db(DB_TYPE.MY_SQL)
-con3 = connect_db(DB_TYPE.SQLITE)
+#con2 = connect_db(DB_TYPE.MY_SQL)
+#con3 = connect_db(DB_TYPE.SQLITE)
 
 #create_tables(DB_TYPE.DUCKDB, con)
 #create_tables(DB_TYPE.MY_SQL, con2)
-create_tables(DB_TYPE.SQLITE, con3)
+#create_tables(DB_TYPE.SQLITE, con3)
 #get_reduce_bus_stop(default_box_10, con, write_file=False)
 #get_reduce_bus_stop(default_box_10, con2, write_file=False)
-con3.sql("SHOW ALL TABLES;").show()
-get_reduce_bus_stop(default_box_10, con3, write_file=False)
+get_reduce_bus_stop(default_box_10, con, write_file=True, stops_threshold_line=5)
 
 
-reduce_shapefiles(default_box_10)
+reduce_shapefiles(con, default_box_10)
