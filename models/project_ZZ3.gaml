@@ -16,12 +16,19 @@ global {
 	file file_lines<-csv_file("../includes/reduced_data/lines.txt", ",", "'", true);
 	
 	geometry shape <- envelope(shape_file_roads);
-	float time_step <- 10 #mn;
+	float time_step <- 1 #mn;
 	int nb_groups <- 5;
 	int n_max_people <- 100 const:true;
 	graph the_graph <- as_edge_graph(shape_file_roads);
+	//the_graph <- the_graph with_weights (my_graph.edges as_map (each::geometry(each).length));
 	
 	map<string,stop> stop_index <- [];
+	map<string,stop> bus_index <- [];
+	
+	float tolerance <- 1.0;
+	bool split_lines <- true;
+	bool keep_main_connected <- true;
+	
 	map<string,string> MYSQL <- [
 					'host'::'127.0.0.1',
 					'dbtype'::'MySQL',
@@ -35,20 +42,16 @@ global {
     	'database'::'../includes/gama_project_sqlite.db'];
 	string QUERY <- "SELECT stop_id FROM stops";
 	
-	
-	init {
-		 		
+	init {		
 		create building from: shape_file_buildings;
 
-		create road from: shape_file_roads;
+		create road from: shape_file_roads;// with:[dist::float(read('length'))];
+		
 		
 		create stop from:file_stops with:[stop_id::string(read ('stop_id')), location::point(read('geom'))];
 		ask stop {
     		stop_index[stop_id] <- self;
-    		
-		}
-		ask stop{
-			location <- shape_file_roads closest_to(self);
+    		location <- shape_file_roads closest_to(self);
 		}
 
 		create busLine from:file_lines with:[route_id::string (read ('name'))]{
@@ -57,12 +60,14 @@ global {
 			file file_line <- csv_file(file_name, ",", "'", true);
 			loop el over: file_line {
 				if stops != nil {
+					
 					stops <- stops + stop_index[string(el)];
 				}
 				else{
 					if string(el) != nil{
 						stops <- list(stop_index[string(el)]);
 						
+
 					}
 					else{
 						route_id <- el;
@@ -70,18 +75,19 @@ global {
 					}
 				}
 			}
+			create bus with:[location::stops[0].location, line::self];
 		}
-			
-		
-		
 	}
-
 }
+
+
+
 
 species building{
 	
 	string type;
-	rgb color <- #gray ;
+
+	rgb color <- #grey ;
 	aspect base {
 		draw shape color: color ;
 
@@ -100,7 +106,7 @@ species stop {
 	
 species busLine{
 	string route_id;
-    list<stop> stops;
+    list<stop> stops <-nil ;
     path paths;
     rgb route_color;
     
@@ -108,7 +114,7 @@ species busLine{
 
     aspect base {
     	location <- stops[0].location;
-    	loop i from: 0 to:5 {
+    	loop i from: 0 to:length(stops) {
             // Project stops onto the graph
             //point p1 <- closest_to(graph_node(the_graph), stops[i].location);
             //
@@ -123,17 +129,51 @@ species busLine{
     }
 }
 
-species db_agent parent: AgentDB {
-	//insert your descriptions here
+species bus skills:[moving]{
+	string bus_id;
+	busLine line;
+	int next_stop_index <- 1;
+	int capacity <- rnd(n_max_people) min:10 max:30;
+	int load <- 0;
+	float stop_time<-0.0;
+	int direction<-1;
+	
+	stop target <- line.stops[next_stop_index];
+	
+	aspect base {
+		draw circle(20) color: line.route_color border: #black;
+	}
+	
+	
+	reflex move{
+		speed <- 30 #km/#h;
+		current_path <- goto(target:target, on:the_graph, return_path:true);
+		if location = target.location or current_path=nil{
+			next_stop_index <- (next_stop_index+direction) ;
+			target <- line.stops[next_stop_index];
+			if next_stop_index = length(self.line.stops)-1 or next_stop_index = 0{
+				direction <- direction*-1;
+			}
+		}
+		
+	}
+	
+	
 }
 
-species passengersGroup {
+/*species db_agent parent: AgentDB {
+	//insert your descriptions here
+}*/
+
+
+
+/*species passengersGroup {
 	rgb color <- #yellow ;
 	int size <- rnd(n_max_people) min:0 max:n_max_people;
 	aspect base {
 		draw square(20) color: color border: #black;
 	}
-}
+}*/
 
 species road  {
 	rgb color <- #black ;
@@ -154,8 +194,9 @@ experiment road_traffic type: gui {
 			species building aspect: base ;
 			species road aspect: base ;
 			//species passengersGroup aspect: base ;
-			species busLine aspect: base ;
+			//species busLine aspect: base ;
 			species stop aspect: base ;
+			species bus aspect:base ;
 			
 		}
 	}
