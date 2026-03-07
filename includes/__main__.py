@@ -6,15 +6,53 @@ from dotenv import load_dotenv
 import os
 import re
 from enum import Enum
+from urllib.request import urlretrieve
+import zipfile
 
+# environment file to handle MySQL database
 load_dotenv()
+
+VERBOSE = True
 
 # define paths
 PROJECT_ROOT = Path(".")
 REDUCED_DATA_PATH = PROJECT_ROOT / "reduced_data"
-SHAPEFILE_REPERTORY_PATH = PROJECT_ROOT / "/ile-de-france-260112-free.shp"
+SHAPEFILE_REPERTORY_PATH = PROJECT_ROOT / "ile-de-france-260112-free.shp"
 GTFS_REPERTORY_PATH = PROJECT_ROOT / "IDFM-gtfs"
 
+
+# download GTFS and shapefiles
+
+# GTFS
+if not GTFS_REPERTORY_PATH.exists():
+	
+	GTFS_URL = "https://eu.ftp.opendatasoft.com/stif/GTFS/IDFM-gtfs.zip"
+	GTFS_ZIP_FILENAME = PROJECT_ROOT /"IDFM-gtfs.zip"
+	
+	path, headers = urlretrieve(GTFS_URL, GTFS_ZIP_FILENAME)
+	if VERBOSE:
+		for name, value in headers.items():
+			print(name, value)
+	with zipfile.ZipFile(GTFS_ZIP_FILENAME, "r") as zip_ref:
+		Path.mkdir(GTFS_REPERTORY_PATH, mode=0o755)
+		zip_ref.extractall(GTFS_REPERTORY_PATH)
+
+# shapefiles
+if not SHAPEFILE_REPERTORY_PATH.exists():
+	
+	SHAPEFILE_URL = "https://download.geofabrik.de/europe/france/ile-de-france-latest-free.shp.zip"
+	SHAPEFILE_ZIP_FILENAME = PROJECT_ROOT /"ile-de-france-latest-free.shp.zip"
+	
+	path, headers = urlretrieve(SHAPEFILE_URL, SHAPEFILE_ZIP_FILENAME)
+	if VERBOSE:
+		for name, value in headers.items():
+			print(name, value)
+	with zipfile.ZipFile(SHAPEFILE_ZIP_FILENAME, "r") as zip_ref:
+		Path.mkdir(SHAPEFILE_REPERTORY_PATH, mode=0o755)
+		zip_ref.extractall(SHAPEFILE_REPERTORY_PATH)
+
+
+# create an immutable data strucure to store boundaries
 @dataclass(frozen=True)
 class box:
 
@@ -78,6 +116,7 @@ def connect_db(
 			port = int(os.environ["PORT1"])
 			database = os.environ["DATABASE"]
 
+			# because no prepared available in this case, we check string validity with a RegExp
 			if not re.match(r'^[a-zA-Z0-9_]+$', database): raise ValueError("Invalid database name")
 			con = con.execute(f"""
 					ATTACH 'host=localhost user=root port={port} database={database}' AS {DB_NAME_DICT["MY_SQL"]} (TYPE mysql);
@@ -399,17 +438,17 @@ def get_reduce_bus_stop(
 	return None
 
 
+if __name__=="__main__":
+	con = connect_db(DB_TYPE.DUCKDB)
+	#con2 = connect_db(DB_TYPE.MY_SQL)
+	#con3 = connect_db(DB_TYPE.SQLITE)
 
-con = connect_db(DB_TYPE.DUCKDB)
-#con2 = connect_db(DB_TYPE.MY_SQL)
-#con3 = connect_db(DB_TYPE.SQLITE)
-
-#create_tables(DB_TYPE.DUCKDB, con)
-#create_tables(DB_TYPE.MY_SQL, con2)
-#create_tables(DB_TYPE.SQLITE, con3)
-#get_reduce_bus_stop(default_box_10, con, write_file=False)
-#get_reduce_bus_stop(default_box_10, con2, write_file=False)
-get_reduce_bus_stop(default_box_10, con, write_file=True, stops_threshold_line=5)
+	#create_tables(DB_TYPE.DUCKDB, con)
+	#create_tables(DB_TYPE.MY_SQL, con2)
+	#create_tables(DB_TYPE.SQLITE, con3)
+	#get_reduce_bus_stop(default_box_10, con, write_file=False)
+	#get_reduce_bus_stop(default_box_10, con2, write_file=False)
+	get_reduce_bus_stop(default_box_10, con, write_file=False, stops_threshold_line=5)
 
 
-reduce_shapefiles(con, default_box_10)
+	#reduce_shapefiles(con, default_box_10)
