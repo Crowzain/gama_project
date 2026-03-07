@@ -16,10 +16,12 @@ global {
 	file file_lines<-csv_file("../includes/reduced_data/lines.txt", ",", "'", true);
 	
 	geometry shape <- envelope(shape_file_roads);
-	float time_step <- 1 #mn;
 	int nb_groups <- 5;
-	int n_max_people <- 100 const:true;
-	graph the_graph <- as_edge_graph(shape_file_roads);
+	int n_max_people <- 10 const:true;
+	graph road_graph <- as_edge_graph(shape_file_roads);
+	graph bus_graph <-graph([]);
+	
+	
 	
 	map<string,stop> stop_index <- [];
 	map<string,stop> bus_index <- [];
@@ -40,11 +42,11 @@ global {
 	
 	
 	init {		
-		
 		step <- 1#s;
+		seed<-42.0;
 		create building from: shape_file_buildings;
 
-		create road from: shape_file_roads;
+		create road from: shape_file_roads with:[maxspeed::float(read('maxspeed'))];
 		
 		
 		create stop from:file_stops with:[stop_id::string(read ('stop_id')), location::point(read('geom'))];
@@ -57,16 +59,29 @@ global {
 			route_color <- rnd_color(255);
 			string file_name <- "../includes/reduced_data/"+self.route_id+".txt";
 			file file_line <- csv_file(file_name, ",", "'", true);
+			stop s;
+			point node1;
+			point node2;
 			loop el over: file_line {
+				s <- stop_index[string(el)];
+				
 				
 				// case when stops list is empty
-				if stops != nil {
-					stops <- stops + stop_index[string(el)];
-				}
-				else{
-					if string(el) != nil{
-						stops <- list(stop_index[string(el)]);
+				if length(stops)>0 and s != nil{
+					stops <- stops + s;
+					if length(stops)>1{
 						
+						node1 <- s.location;
+						bus_graph <- bus_graph add_edge (node2::node1);
+						node2 <- node1;
+					}
+				}
+				
+				else{
+					if s != nil{
+						stops <- list(s);
+						node1 <- s.location;
+						node2 <- node1;
 
 					}
 					else{
@@ -75,8 +90,16 @@ global {
 					}
 	
 				}
+				
 			}
 			create bus with:[location::stops[0].location, line::self];
+		}
+		create passenger with:[source::one_of(stop_index), target::one_of(stop_index)] number:2;
+		ask passenger{
+			
+			way <- path_between(bus_graph, source.location, target.location);
+			location<-source.location;
+			
 		}
 	}
 }
@@ -115,11 +138,14 @@ species busLine{
 
     aspect base {
     	location <- stops[0].location;
-    	loop i from: 0 to:length(stops) {            
-            path seg <- path_between(the_graph, stops[i].location, stops[i+1].location);
+    	point node1;
+    	point node2;
+    	loop i from: 0 to:length(stops) {
+    		node1 <- stops[i].location;
+    		node2 <- stops[i+1].location;          
+            path seg <- path_between(road_graph, node1, node2);
  			draw shape(seg) color: route_color width: 6;
         }
-       
         
     }
 }
@@ -129,7 +155,7 @@ species bus skills:[moving]{
 	busLine line;
 	int next_stop_index <- 1;
 	int capacity <- rnd(n_max_people) min:10 max:30;
-	list<passenger> passengers;
+	list<passenger> passengers <- [];
 	float stop_time<-0.0;
 	int direction <- 1;
 	
@@ -142,7 +168,7 @@ species bus skills:[moving]{
 	
 	reflex move{
 		speed <- 30 #km/#h;
-		current_path <- goto(target:target, on:the_graph, return_path:true);
+		current_path <- goto(target:target, on:road, return_path:true);
 		if location = target.location or current_path=nil{
 			next_stop_index <- (next_stop_index+direction) ;
 			target <- line.stops[next_stop_index];
@@ -150,30 +176,44 @@ species bus skills:[moving]{
 				direction <- direction*-1;
 			}
 		}
-	}
-	
-	
-		
-	
-	
+	}	
 }
-/* 
-species db_agent parent: AgentDB {
-	//insert your descriptions here
-}*/
 
 
-
-species passenger {
-	rgb color <- #yellow ;
+species passenger skills:[moving]{
+	rgb color <- #orange ;
 	stop source;
 	stop target;
+	bus current_bus <-nil;
+	path way;
+	int way_index <- 0;
 	aspect base {
-		draw square(20) color: color border: #black;
+		draw square(50) color: color border: #black;
+	}
+	reflex get_on when: current_bus =nil{
+		ask bus at_distance(5){
+			
+			if target.location distance_to point(myself.way.vertices[myself.way_index])<1{
+				myself.current_bus <- self;
+				add myself to: passengers;
+			}
+		}
+	}
+	reflex move when: current_bus !=nil{
+		location <- current_bus.location;
+		if location distance_to target.location<1{
+			do die;
+		}
+		if location distance_to point(way.vertices()[way_index]) <1 {
+			way_index <- way_index + 1;
+		}
+		if current_bus.target.location distance_to point(way.vertices[way_index])>=1{
+			current_bus <- nil;
+		}
 	}
 }
 
-species road  {
+species road  skills:[road_skill]{
 	rgb color <- #black ;
 	aspect base {
 		draw shape color: color ;
@@ -191,7 +231,7 @@ experiment road_traffic type: gui {
 		display city_display type:3d {
 			species building aspect: base refresh:false;
 			species road aspect: base refresh:false;
-			//species passengersGroup aspect: base ;
+			//species passenger aspect: base;
 			species busLine aspect: base refresh:false;
 			species stop aspect: base refresh:false;
 			species bus aspect:base ;
