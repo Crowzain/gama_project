@@ -201,6 +201,9 @@ def reduce_shapefiles(
 		con:dd.DuckDBPyConnection,
 		box:box,
 	)->None:
+
+	con.execute("INSTALL spatial;")
+	con.execute("LOAD spatial;")
 	reduce_roads(box, con)
 	reduce_stops(box, con)
 	reduce_buildings(box, con)
@@ -210,15 +213,11 @@ def reduce_shapefiles(
 
 def reduce_roads(
 		box:box,
-		con:dd.DuckDBPyConnection|None=None,
+		con:dd.DuckDBPyConnection,
 		roads_path:Path|str|None=None,
 		reduced_roads_path:Path|str|None=None,
 		last_road_type_code:int=5135,
 	)->None:
-	if con is None:
-		con = dd.connect()
-	con.execute("INSTALL spatial;")
-	con.execute("LOAD spatial;")
 
 	if roads_path is None:
 		roads_path = SHAPEFILE_REPERTORY_PATH / "gis_osm_roads_free_1.shp"
@@ -234,7 +233,7 @@ def reduce_roads(
 			WITH (FORMAT gdal, DRIVER 'ESRI Shapefile', LAYER_CREATION_OPTIONS 'WRITE_BBOX=YES', SRS 'EPSG:4326');
 		""",
 		{
-			"input_file": "."+str(roads_path),
+			"input_file": str(roads_path),
 			"output_file": str(reduced_roads_path),
 			"left": box.left, 
 			"bottom": box.bottom, 
@@ -248,15 +247,11 @@ def reduce_roads(
 
 def reduce_buildings(
 		box:box,
-		con:dd.DuckDBPyConnection|None=None,
+		con:dd.DuckDBPyConnection,
 		building_path:Path|str|None=None,
 		reduced_building_path:Path|str|None=None,
 		apartments_office_only:bool=False
 )->None:
-	if con is None:
-		con = dd.connect()
-	con.execute("INSTALL spatial;")
-	con.execute("LOAD spatial;")
 	
 	if building_path is None:
 		building_path = SHAPEFILE_REPERTORY_PATH / "gis_osm_buildings_a_free_1.shp"
@@ -273,7 +268,7 @@ def reduce_buildings(
 			WITH (FORMAT gdal, DRIVER 'ESRI Shapefile', LAYER_CREATION_OPTIONS 'WRITE_BBOX=YES', SRS 'EPSG:4326');
 		""",
 		{
-			"input_file": "."+str(building_path),
+			"input_file": str(building_path),
 			"output_file": str(reduced_building_path),
 			"left": box.left, 
 			"bottom": box.bottom, 
@@ -285,18 +280,14 @@ def reduce_buildings(
 
 def reduce_stops(
 		box:box,
-		con:dd.DuckDBPyConnection|None=None,
+		con:dd.DuckDBPyConnection,
 		reduced_stops_path:Path|str|None=None,
 )->None:
-	if con is None:
-		con = dd.connect()
-	con.execute("INSTALL spatial;")
-	con.execute("LOAD spatial;")
-
 	if reduced_stops_path is None:
 		for file in Path.glob(REDUCED_DATA_PATH, "*reduced_stops*"):
 			file.unlink()
 		reduced_stops_path = REDUCED_DATA_PATH / "reduced_stops.shp"
+	print(reduced_stops_path)
 	con.execute(
 		"""
 		COPY (
@@ -365,16 +356,12 @@ def reduce_stops(
 
 def get_reduce_bus_stop(
 		box:box,
-		con:dd.DuckDBPyConnection|None,
+		con:dd.DuckDBPyConnection,
 		stops_threshold_line:int=20,
 		nb_lines_max:int=100,
 		write_file:bool=False
 	)->None:
 	
-	if con is None:
-		con = connect_db(DB_TYPE.DUCKDB)
-	con.execute("INSTALL spatial;")
-	con.execute("LOAD spatial;")
 
 	con.execute("""
 		WITH 
@@ -448,7 +435,7 @@ if __name__=="__main__":
 	#create_tables(DB_TYPE.SQLITE, con3)
 	#get_reduce_bus_stop(default_box_10, con, write_file=False)
 	#get_reduce_bus_stop(default_box_10, con2, write_file=False)
-	get_reduce_bus_stop(default_box_10, con, write_file=False, stops_threshold_line=5)
+	get_reduce_bus_stop(default_box_10, con, write_file=True, stops_threshold_line=5)
 
 
-	#reduce_shapefiles(con, default_box_10)
+	reduce_shapefiles(con, default_box_10)
