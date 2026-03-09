@@ -287,67 +287,20 @@ def reduce_stops(
 		for file in Path.glob(REDUCED_DATA_PATH, "*reduced_stops*"):
 			file.unlink()
 		reduced_stops_path = REDUCED_DATA_PATH / "reduced_stops.shp"
-	print(reduced_stops_path)
-	con.execute(
-		"""
-		COPY (
-				WITH 
-			filtered_stops AS (
-				SELECT stop_id, stop_lat, stop_lon
-				FROM stops
-				WHERE stop_lat BETWEEN $bottom AND $top
-				AND stop_lon BETWEEN $left AND $right
-			),
 		
-			candidate_services AS (
-				SELECT trip_id FROM trips
-				JOIN calendar USING(service_id)
-				WHERE MONDAY AND TUESDAY AND WEDNESDAY AND THURSDAY AND FRIDAY
-			),
-			
-			candidate_routes AS (
-				SELECT route_id FROM routes
-				WHERE route_type=3
-			),
-			
-			filtered_trips AS (
-				SELECT DISTINCT ON(trip_id) trip_id, route_id FROM trips
-				JOIN candidate_services USING(trip_id)
-				JOIN candidate_routes USING(route_id)
-			),
-			
-			candidate_stops AS (
-				SELECT stop_id, trip_id, stop_sequence, stop_lat, stop_lon FROM stop_times
-				JOIN filtered_stops USING(stop_id)
-				WHERE departure_time>make_time(7,0,0) AND arrival_time<=make_time(18,0,0)
-			)
-			 
-		SELECT DISTINCT ON(stop_id) 
-			unnest(SI) as stop_id, 
-			ST_Point2D(unnest(SLON), unnest(SLAT)) as geom
-			FROM(
-			SELECT DISTINCT ON(route_id) 
-				route_id, 
-				list(stop_id ORDER BY stop_sequence) AS SI ,
-				list(stop_lat ORDER BY stop_sequence) AS SLAT,
-				list(stop_lon ORDER BY stop_sequence) AS SLON
-				
-			FROM candidate_stops
-			JOIN filtered_trips USING (trip_id)
-			GROUP BY (trip_id, route_id)
-			HAVING COUNT(stop_id)>$stops_threshold_line
-			LIMIT $nb_lines)
-		) TO $output_file
-		WITH (FORMAT gdal, DRIVER 'ESRI Shapefile', LAYER_CREATION_OPTIONS 'WRITE_BBOX=YES', SRS 'EPSG:4326');
+	con.execute(
+		f"""
+			COPY (SELECT stop_id, ST_Point2D(stop_lon, stop_lat) AS geom FROM stops
+			WHERE stop_lat BETWEEN $bottom AND $top
+			AND stop_lon BETWEEN $left AND $right) TO $output_file
+			WITH (FORMAT gdal, DRIVER 'ESRI Shapefile', LAYER_CREATION_OPTIONS 'WRITE_BBOX=YES', SRS 'EPSG:4326');
 		""",
 		{
 			"output_file": str(reduced_stops_path),
 			"left": box.left, 
 			"bottom": box.bottom, 
 			"right": box.right, 
-			"top": box.top,
-			"stops_threshold_line": 5,
-			"nb_lines": 100
+			"top": box.top
 		}
 	)
 	
