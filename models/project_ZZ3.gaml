@@ -33,7 +33,7 @@ global {
 					'database'::'mysql_db',
 					'port'::'3306',
 					'user'::'root',
-					'passwd'::'7dae25e34ecd1e45fcb5738bfb69b6665299ae32'];
+					'passwd'::'Iamastrongpassword']; // is it possible to access environment variable ?
 	map <string, string>  SQLITE <- [
     	'dbtype'::'sqlite',
     	'database'::'../includes/gama_project_sqlite.db'];
@@ -43,7 +43,7 @@ global {
 	
 	init {		
 		step <- 1#s;
-		seed<-42.0;
+		seed<-4.0;
 		create building from: shape_file_buildings;
 
 		create road from: shape_file_roads with:[maxspeed::float(read('maxspeed'))];
@@ -62,16 +62,21 @@ global {
 			stop s;
 			point node1;
 			point node2;
+			
+			// get route_id stored into the header
+			route_id <- file_line.attributes[0];
 			loop el over: file_line {
 				s <- stop_index[string(el)];
-				
+				s.activated <-true;
 				
 				// case when stops list is empty
 				if length(stops)>0 and s != nil{
-					stops <- stops + s;
+					add s to: stops;
 					if length(stops)>1{
 						
 						node1 <- s.location;
+						
+						// bus_graph construction must be improved/fixed
 						bus_graph <- bus_graph add_edge (node2::node1);
 						node2 <- node1;
 					}
@@ -84,22 +89,22 @@ global {
 						node2 <- node1;
 
 					}
-					else{
-						route_id <- el;
-						
-					}
 	
 				}
 				
 			}
-			create bus with:[location::stops[0].location, line::self];
+			create bus with:[location::one_of(stops).location, line::self];
 		}
-		create passenger with:[source::one_of(stop_index), target::one_of(stop_index)] number:2;
-		ask passenger{
-			
-			way <- path_between(bus_graph, source.location, target.location);
+		create passenger number:5{
+			source <- one_of(stop_index where (each.activated=true));
+			target <- one_of(stop_index);
+
 			location<-source.location;
 			
+			//again bus_graph must be modified, sometimes way is empty, whereas graph is connected (a path between each pair of vertices does exist)
+			way <- path_between(bus_graph, closest_to(bus_graph.vertices, source), closest_to(bus_graph.vertices, target));
+				
+
 		}
 	}
 }
@@ -121,9 +126,12 @@ species building{
 species stop {
 	rgb color <- #yellow;
 	string stop_id;
+	bool activated<-false; // variable to only display used stops (maybe the other could die, but I have not found an efficient way for that)
 	
 	aspect base {
-		draw circle(10) color: color border: #black;
+		if activated {
+			draw circle(10) color: color border: #black;	
+		}
 	}
 }
 
@@ -146,7 +154,6 @@ species busLine{
             path seg <- path_between(road_graph, node1, node2);
  			draw shape(seg) color: route_color width: 6;
         }
-        
     }
 }
 
@@ -168,7 +175,7 @@ species bus skills:[moving]{
 	
 	reflex move{
 		speed <- 30 #km/#h;
-		current_path <- goto(target:target, on:road, return_path:true);
+		current_path <- goto(target:target, on:road_graph, return_path:true);
 		if location = target.location or current_path=nil{
 			next_stop_index <- (next_stop_index+direction) ;
 			target <- line.stops[next_stop_index];
@@ -180,39 +187,91 @@ species bus skills:[moving]{
 }
 
 
+// just a try to embed bus with driving skill
+
+/*
+species bus skills:[driving]{
+	string bus_id;
+	busLine line;
+	int next_stop_index <- 1;
+	int capacity <- rnd(n_max_people) min:10 max:30;
+	list<passenger> passengers <- [];
+	float stop_time<-0.0;
+	int direction <- 1;
+	
+	stop target <- line.stops[next_stop_index];
+	
+	aspect base {
+		draw circle(20) color: line.route_color border: #black;
+	}
+	
+	action select_target_path {
+		if line.stops[next_stop_index]=nil {
+			next_stop_index <- next_stop_index+direction;
+		}
+		target <- line.stops[next_stop_index];
+		do compute_path graph: road_graph target: road_graph.vertices closest_to target;
+		next_stop_index <- (next_stop_index+direction) ;
+			target <- line.stops[next_stop_index];
+			if next_stop_index = length(self.line.stops)-1 or next_stop_index = 0{
+				direction <- direction*-1;
+			} 
+	}
+	
+	reflex choose_path when: (target = nil) or (location distance_to target.location < 1){
+		do select_target_path;
+			
+	}
+	
+	
+	reflex move when: (location distance_to target.location >= 1){
+		do drive;
+		
+	}	
+}*/
+
+
 species passenger skills:[moving]{
 	rgb color <- #orange ;
 	stop source;
 	stop target;
 	bus current_bus <-nil;
 	path way;
-	int way_index <- 0;
+	int way_index <- 1;
+	
+	
 	aspect base {
 		draw square(50) color: color border: #black;
 	}
+	
+	
 	reflex get_on when: current_bus =nil{
 		ask bus at_distance(5){
-			
-			if target.location distance_to point(myself.way.vertices[myself.way_index])<1{
+			  if target.location distance_to point(myself.way.vertices[myself.way_index])<0.01{
 				myself.current_bus <- self;
 				add myself to: passengers;
 			}
 		}
 	}
+	
+	
 	reflex move when: current_bus !=nil{
 		location <- current_bus.location;
-		if location distance_to target.location<1{
+		
+		
+		// conditon needs to be fixed to handle target point (way.vertices does not return the last vertex of the path) 
+		if location distance_to target.location<1 or way_index=length(way.vertices)-1{
 			do die;
 		}
-		if location distance_to point(way.vertices()[way_index]) <1 {
+		if location distance_to point(way.vertices()[way_index]) <0.01 {
 			way_index <- way_index + 1;
-		}
-		if current_bus.target.location distance_to point(way.vertices[way_index])>=1{
 			current_bus <- nil;
 		}
 	}
 }
 
+
+// should be improved to be used and to store vehicle on it for example
 species road  skills:[road_skill]{
 	rgb color <- #black ;
 	aspect base {
@@ -231,7 +290,7 @@ experiment road_traffic type: gui {
 		display city_display type:3d {
 			species building aspect: base refresh:false;
 			species road aspect: base refresh:false;
-			//species passenger aspect: base;
+			species passenger aspect: base;
 			species busLine aspect: base refresh:false;
 			species stop aspect: base refresh:false;
 			species bus aspect:base ;
