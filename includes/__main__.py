@@ -383,7 +383,7 @@ if __name__=="__main__":
 	#con2 = connect_db(DB_TYPE.MY_SQL)
 	#con3 = connect_db(DB_TYPE.SQLITE)
 
-	#create_tables(DB_TYPE.DUCKDB, con)
+	create_tables(DB_TYPE.DUCKDB, con)
 	#create_tables(DB_TYPE.MY_SQL, con2)
 	#create_tables(DB_TYPE.SQLITE, con3)
 	#get_reduce_bus_stop(default_box_10, con, write_file=False)
