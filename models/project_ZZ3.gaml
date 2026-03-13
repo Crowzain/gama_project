@@ -105,7 +105,10 @@ global {
 			way <- path_between(bus_graph, source, target);
 			if length(way.vertices)>0{
 				list cur_edge <- list(way.edges[0]);
-				next_stop_loc <- source.location distance_to point(cur_edge[0]) <0.1? point(cur_edge[1]):point(cur_edge[0]);
+				point p0 <- point(cur_edge[0]);
+				point p1 <- point(cur_edge[1]);
+				
+				next_stop_loc <- location distance_to p0 <eps? p1:p0;
 			}
 			else{
 				do die;
@@ -115,7 +118,6 @@ global {
 		//filter unused stop by killing them
 		ask stop {
 			if not activated{
-				write string(self)+"dies";
 				do die;
 			}
 		}
@@ -286,17 +288,28 @@ species passenger skills:[moving]{
 	reflex move when: on_board{
 		
 		location <- current_bus.location;
+
 		
 		if current_bus.at_stop{
-			if not updated{
-				way_index <- way_index + 1;
-				list cur_edge <- list(way.edges[way_index]);
-				next_stop_loc <- source.location distance_to point(cur_edge[0]) <0.1? point(cur_edge[1]):point(cur_edge[0]);
-				if current_bus.next_stop.location!=next_stop_loc{
-					current_bus<-nil;
-					on_board <- false;
+			if location distance_to target.location >=eps{
+				if not updated{
+					way_index <- way_index + 1;
+					
+					list cur_edge <- list(way.edges[way_index]);
+					point p0 <- point(cur_edge[0]);
+					point p1 <- point(cur_edge[1]);
+					
+					next_stop_loc <- location distance_to p0 <eps? p1:p0;
+					if current_bus.next_stop.location distance_to next_stop_loc>=eps{
+						current_bus<-nil;
+						on_board <- false;
+					}
+					updated <- true;
 				}
-				updated <- true;
+			}
+			else{
+				write string(self) + " arrived at " + self.target;
+				do die;
 			}
 		}
 		else{
@@ -312,10 +325,18 @@ species passenger skills:[moving]{
 		}
 		else{
 			ask bus at_distance(eps){
-				if next_stop.location distance_to myself.next_stop_loc < 0.1{
-					myself.current_bus <- self;
-					add myself to: passengers;
-					myself.on_board <- not at_stop;
+				stop next_s <- line.stops first_with (each.location distance_to myself.next_stop_loc < eps);
+        		stop cur_s  <- line.stops first_with (each.location distance_to myself.location < eps);
+				if next_s != nil and cur_s != nil{
+					int idx_cur  <- line.stops index_of cur_s;
+					int idx_next <- line.stops index_of next_s;
+					bool correct_direction <- (idx_next - idx_cur)*direction>0;
+					if correct_direction{
+						myself.current_bus <- self;
+						add myself to: passengers;
+						myself.on_board <- true;
+						myself.updated <- true;
+					}
 				}
 			}
 		}
