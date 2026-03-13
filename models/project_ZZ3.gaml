@@ -19,8 +19,8 @@ global {
 	int nb_groups <- 5;
 	int n_max_people <- 10 const:true;
 	graph road_graph <- as_edge_graph(shape_file_roads);
-	graph bus_graph <-graph([]);
-	
+	graph<stop,stop> bus_graph <-graph([]);
+	float eps <- 0.1;
 	
 	
 	map<string,stop> stop_index <- [];
@@ -60,8 +60,8 @@ global {
 			string file_name <- "../includes/reduced_data/"+self.route_id+".txt";
 			file file_line <- csv_file(file_name, ",", "'", true);
 			stop s;
-			point node1;
-			point node2;
+			stop node1;
+			stop node2;
 			
 			// get route_id stored into the header
 			route_id <- file_line.attributes[0];
@@ -72,39 +72,44 @@ global {
 				// case when stops list is empty
 				if length(stops)>0 and s != nil{
 					add s to: stops;
-					if length(stops)>1{
 						
-						node1 <- s.location;
-						
-						// bus_graph construction must be improved/fixed
-						bus_graph <- bus_graph add_edge (node2::node1);
-						node2 <- node1;
-					}
+					node1 <- s;
+					
+					// bus_graph construction must be improved/fixed
+					bus_graph <- bus_graph add_edge (node2::node1);
+					bus_graph <- bus_graph add_edge (node1::node2);
+					node2 <- node1;
 				}
 				
 				else{
 					if s != nil{
 						stops <- list(s);
-						node1 <- s.location;
-						node2 <- node1;
+						node2 <- s;
 
 					}
 	
 				}
 				
 			}
-			create bus with:[location::one_of(stops).location, line::self];
+			create bus with:[location::stops[0].location, line::self];
 		}
-		create passenger number:5{
+		create passenger number:1{
 			source <- one_of(stop_index where (each.activated=true));
-			target <- one_of(stop_index);
+			target <- one_of(stop_index where (each.activated=true));
 
 			location<-source.location;
 			
 			//again bus_graph must be modified, sometimes way is empty, whereas graph is connected (a path between each pair of vertices does exist)
-			way <- path_between(bus_graph, closest_to(bus_graph.vertices, source), closest_to(bus_graph.vertices, target));
-				
 
+
+			way <- path_between(bus_graph, source, target);
+			if length(way.vertices)>0{
+				list cur_edge <- list(way.edges[0]);
+				next_stop_loc <- source.location distance_to point(cur_edge[0]) <0.1? point(cur_edge[1]):point(cur_edge[0]);
+			}
+			else{
+				do die;
+			}
 		}
 	}
 }
@@ -139,10 +144,7 @@ species stop {
 species busLine{
 	string route_id;
     list<stop> stops <-nil ;
-    path paths;
     rgb route_color;
-    
-    
 
     aspect base {
     	location <- stops[0].location;
@@ -158,32 +160,56 @@ species busLine{
 }
 
 species bus skills:[moving]{
+	
+	// id attributes
 	string bus_id;
 	busLine line;
+	
+	// routing attributes
 	int next_stop_index <- 1;
+	int direction <- 1;
+	stop next_stop <- line.stops[next_stop_index];
+	bool at_stop<-true;
+	float counter<-0.0#s;
+	
+	
+	// capacity attributes
 	int capacity <- rnd(n_max_people) min:10 max:30;
 	list<passenger> passengers <- [];
-	float stop_time<-0.0;
-	int direction <- 1;
 	
-	stop target <- line.stops[next_stop_index];
+	// miscellaneous attributes
+	float stop_time<-20#s;
+	
 	
 	aspect base {
 		draw circle(20) color: line.route_color border: #black;
 	}
 	
 	
-	reflex move{
-		speed <- 30 #km/#h;
-		current_path <- goto(target:target, on:road_graph, return_path:true);
-		if location = target.location or current_path=nil{
-			next_stop_index <- (next_stop_index+direction) ;
-			target <- line.stops[next_stop_index];
-			if next_stop_index = length(self.line.stops)-1 or next_stop_index = 0{
-				direction <- direction*-1;
-			}
+	reflex move when: not at_stop{
+		speed<-30 #km/#h;
+		do goto(target:next_stop, on:road_graph, return_path:false);
+		if location distance_to next_stop < eps{
+			at_stop <- true;
 		}
-	}	
+	}
+	
+	reflex updateNextStop when:	at_stop{
+		
+		if counter = 0.0{
+			if next_stop_index in [0, length(line.stops)-1]{
+				direction<-direction*(-1);
+			}
+			next_stop_index <- next_stop_index + direction;
+			next_stop <- line.stops[next_stop_index];
+		}
+		counter <- counter + step;
+		if counter=stop_time{
+			counter<-0.0#s;
+			at_stop<-false;
+		}
+		
+	}
 }
 
 
@@ -235,9 +261,13 @@ species passenger skills:[moving]{
 	rgb color <- #orange ;
 	stop source;
 	stop target;
+	point next_stop_loc;
 	bus current_bus <-nil;
 	path way;
-	int way_index <- 1;
+	int way_index <- 0;
+	bool updated <- false;
+	
+	bool on_board <- false;
 	
 	
 	aspect base {
@@ -245,27 +275,41 @@ species passenger skills:[moving]{
 	}
 	
 	
-	reflex get_on when: current_bus =nil{
-		ask bus at_distance(5){
-			  if target.location distance_to point(myself.way.vertices[myself.way_index])<0.01{
-				myself.current_bus <- self;
-				add myself to: passengers;
+	reflex move when: on_board{
+		
+		location <- current_bus.location;
+		
+		if current_bus.at_stop{
+			if not updated{
+				way_index <- way_index + 1;
+				list cur_edge <- list(way.edges[way_index]);
+				next_stop_loc <- source.location distance_to point(cur_edge[0]) <0.1? point(cur_edge[1]):point(cur_edge[0]);
+				if current_bus.next_stop.location!=next_stop_loc{
+					current_bus<-nil;
+					on_board <- false;
+				}
+				updated <- true;
 			}
+		}
+		else{
+			updated<-false;
 		}
 	}
 	
 	
-	reflex move when: current_bus !=nil{
-		location <- current_bus.location;
-		
-		
-		// conditon needs to be fixed to handle target point (way.vertices does not return the last vertex of the path) 
-		if location distance_to target.location<1 or way_index=length(way.vertices)-1{
+	reflex request when: not on_board{
+		if location distance_to target.location<eps{
+			write string(self) + " arrived at " + self.target;
 			do die;
 		}
-		if location distance_to point(way.vertices()[way_index]) <0.01 {
-			way_index <- way_index + 1;
-			current_bus <- nil;
+		else{
+			ask bus at_distance(eps){
+				if next_stop.location distance_to myself.next_stop_loc < 0.1{
+					myself.current_bus <- self;
+					add myself to: passengers;
+					myself.on_board <- not at_stop;
+				}
+			}
 		}
 	}
 }
@@ -288,10 +332,12 @@ experiment road_traffic type: gui {
 
 	output {
 		display city_display type:3d {
+
 			species building aspect: base refresh:false;
 			species road aspect: base refresh:false;
+			
 			species passenger aspect: base;
-			species busLine aspect: base refresh:false;
+			species busLine aspect: base refresh:false transparency:0.5;
 			species stop aspect: base refresh:false;
 			species bus aspect:base ;
 			
