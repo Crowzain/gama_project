@@ -111,6 +111,14 @@ global {
 				do die;
 			}
 		}
+		
+		//filter unused stop by killing them
+		ask stop {
+			if not activated{
+				write string(self)+"dies";
+				do die;
+			}
+		}
 	}
 }
 
@@ -131,7 +139,7 @@ species building{
 species stop {
 	rgb color <- #yellow;
 	string stop_id;
-	bool activated<-false; // variable to only display used stops (maybe the other could die, but I have not found an efficient way for that)
+	bool activated<-false; // variable to only display used stops 
 	
 	aspect base {
 		if activated {
