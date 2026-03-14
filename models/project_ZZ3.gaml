@@ -17,7 +17,8 @@ global {
 	
 	geometry shape <- envelope(shape_file_roads);
 	int nb_groups <- 5;
-	int n_max_people <- 10 const:true;
+	int min_capacity <- 5;
+	int max_capacity <- 30;
 	graph road_graph <- as_edge_graph(shape_file_roads);
 	graph<stop,stop> bus_graph <-graph([]);
 	float eps <- 0.1;
@@ -188,7 +189,7 @@ species bus skills:[moving]{
 	
 	
 	// capacity attributes
-	int capacity <- rnd(n_max_people) min:10 max:30;
+	int capacity <- rnd(min_capacity, max_capacity);
 	list<passenger> passengers <- [];
 	
 	// miscellaneous attributes
@@ -263,6 +264,7 @@ species passenger skills:[moving]{
 						
 						next_stop_loc <- location distance_to p0 <eps? p1:p0;
 						if current_bus.next_stop.location distance_to next_stop_loc>=eps{
+							remove item:self from:current_bus.passengers;
 							current_bus<-nil;
 							on_board <- false;
 						}
