@@ -16,7 +16,7 @@ global {
 	file file_lines<-csv_file("../includes/reduced_data/lines.txt", ",", "'", true);
 	
 	geometry shape <- envelope(shape_file_roads);
-	int nb_groups <- 5;
+	int nb_passengers <- 1000;
 	int min_capacity <- 5;
 	int max_capacity <- 30;
 	graph road_graph <- as_edge_graph(shape_file_roads);
@@ -76,8 +76,8 @@ global {
 					add s to: stops;
 						
 					
-					if s in bus_graph.vertices{
-						node1 <- (bus_graph.vertices where (each.location=s.location))[0];
+					if (s in bus_graph.vertices) {
+						node1 <- (bus_graph.vertices where (each.location distance_to s.location<eps))[0];
 					}
 					else{
 						node1 <- s;
@@ -99,7 +99,7 @@ global {
 			}
 			create bus with:[location::stops[0].location, line::self];
 		}
-		create passenger number:10{
+		create passenger number:nb_passengers{
 			source <- one_of(stop_index where (each.activated=true));
 			target <- one_of(stop_index where (each.activated=true));
 
@@ -108,7 +108,7 @@ global {
 			way <- path_between(bus_graph, source, target);
 			
 			// while path is empty, new target is generated
-			loop while: length(way.vertices)=0{
+			loop while: length(way.edges)=0{
 				target <- one_of(stop_index where (each.activated=true));
 				way <- path_between(bus_graph, source, target);
 			}
@@ -267,12 +267,14 @@ species passenger skills:[moving]{
 							remove item:self from:current_bus.passengers;
 							current_bus<-nil;
 							on_board <- false;
+							color <- #orange;
 						}
 						updated <- true;
 					}
 				}
 			}
 			else{
+				remove item:self from:current_bus.passengers;
 				write string(self) + " arrived at " + self.target;
 				do die;
 			}
@@ -300,6 +302,7 @@ species passenger skills:[moving]{
 						myself.current_bus <- self;
 						add myself to: passengers;
 						myself.on_board <- true;
+						myself.color <- #green;
 						myself.updated <- true;
 					}
 				}
@@ -321,7 +324,7 @@ experiment road_traffic type: gui {
 	parameter "Shapefile for the buildings:" var: shape_file_buildings category: "GIS" ;
 	parameter "Shapefile for the roads:" var: shape_file_roads category: "GIS" ;
 	parameter "Shapefile for the bounds:" var: shape_file_roads category: "GIS" ;
-	//parameter "Number of people agents" var: nb_groups category: "People" ;
+	parameter "Number of people agents" var: nb_passengers category: "passenger" ;
 	//parameter "Number of bus lines" var: nb_bus_lines category: "Bus";
 
 	output {
@@ -331,7 +334,7 @@ experiment road_traffic type: gui {
 			species road aspect: base refresh:false;
 			
 			species passenger aspect: base;
-			species busLine aspect: base refresh:false transparency:0.5;
+			species busLine aspect: base refresh:false transparency:2/3;
 			species stop aspect: base refresh:false;
 			species bus aspect:base ;
 			
