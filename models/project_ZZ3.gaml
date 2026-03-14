@@ -142,9 +142,9 @@ global {
 
 species building{
 	
-	string type;
+	string type const:true;
 
-	rgb color <- #grey ;
+	rgb color <- #grey const:true;
 	aspect base {
 		draw shape color: color ;
 
@@ -152,7 +152,7 @@ species building{
 }
 
 species stop {
-	rgb color <- #yellow;
+	rgb color <- #yellow const:true;
 	string stop_id;
 	bool activated<-false; // variable to only display used stops 
 	
@@ -183,7 +183,7 @@ species busLine{
 }
 
 species bus skills:[moving]{
-	
+	/* attributes */
 	// id attributes
 	string bus_id;
 	busLine line;
@@ -209,6 +209,7 @@ species bus skills:[moving]{
 	}
 	
 	
+	/* behaviors */
 	reflex move when: not at_stop{
 		speed<-30 #km/#h;
 		do goto(target:next_stop, on:road_graph, return_path:false);
@@ -217,28 +218,50 @@ species bus skills:[moving]{
 		}
 	}
 	
-	reflex updateNextStop when:	at_stop{
+	reflex reach_stop when:at_stop{
 		
 		if counter = 0.0{
-			if next_stop_index in [0, length(line.stops)-1]{
-				direction<-direction*(-1);
-			}
-			next_stop_index <- next_stop_index + direction;
-			next_stop <- line.stops[next_stop_index];
+			do update_next_stop;
 		}
+		do wait_at_stop;
+	}
+	
+	
+
+	/* actions */
+	action update_next_stop{
+		if next_stop_index in [0, length(line.stops)-1]{
+			direction<-direction*(-1);
+		}
+		next_stop_index <- next_stop_index + direction;
+		next_stop <- line.stops[next_stop_index];
+	}
+	
+	action wait_at_stop{
 		counter <- counter + step;
 		if counter>=stop_time{
 			counter<-0.0#s;
 			at_stop<-false;
 		}
-		
+	}
+	
+	action get_off(passenger p){
+		remove item:p from:passengers;
+	}
+	
+	action get_on(passenger p){
+		add item:p to:passengers;
 	}
 }
 
 
 
 species passenger skills:[moving]{
+	/* attributes */
+	
 	rgb color <- #orange ;
+	
+	//routing
 	stop source;
 	stop target;
 	point next_stop_loc;
@@ -246,8 +269,10 @@ species passenger skills:[moving]{
 	path way;
 	int way_index <- 0;
 	bool updated <- false;
-	
 	bool on_board <- false;
+	
+	
+	//metrics
 	float waiting_time <-0.0#s;
 	float time_to_reach_target <-0.0#s;
 	
@@ -257,50 +282,39 @@ species passenger skills:[moving]{
 	}
 	
 	
-	action arrive{
-		if current_bus != nil{
-			remove item:self from:current_bus.passengers;
+	/* behaviors */
+	reflex wait when: not on_board{
+		if location distance_to target.location<eps{
+			do reach_target;
 		}
-		write string(self) + " arrived at " + self.target;
-		write "waiting time: " +string(waiting_time/120)+" min";
-		write "time to reach:" +string(time_to_reach_target/120)+" min";
-		write "";
-		nb_passengers<-nb_passengers-1;
-		do die;
-	}
-	
-	reflex update{
-		time_to_reach_target <- time_to_reach_target+step;
+		else{ 
+			loop b over:(bus at_distance(eps)){
+				if is_valid_bus(b){
+					do get_on(b);
+					break;
+				}	
+			}
+			
+		}
 	}
 	
 	reflex move when: on_board{
 		
 		location <- current_bus.location;
 
-		
 		if current_bus.at_stop{
-			if location distance_to target.location >=eps{
-				if not updated{
-					if location distance_to next_stop_loc <eps{
-						way_index <- way_index + 1;
-						
-						list cur_edge <- list(way.edges[way_index]);
-						point p0 <- point(cur_edge[0]);
-						point p1 <- point(cur_edge[1]);
-						
-						next_stop_loc <- location distance_to p0 <eps? p1:p0;
-						if current_bus.next_stop.location distance_to next_stop_loc>=eps{
-							remove item:self from:current_bus.passengers;
-							current_bus<-nil;
-							on_board <- false;
-							color <- #orange;
-						}
-						updated <- true;
-					}
-				}
+			if location distance_to target.location<eps{
+				do reach_target;
 			}
 			else{
-				do arrive;
+				if not updated{
+					if location distance_to next_stop_loc < eps{
+						do update_next_stop;
+						if current_bus.next_stop.location distance_to next_stop_loc>=eps{
+							do get_off;
+						}
+					}
+				}
 			}
 		}
 		else{
@@ -309,30 +323,72 @@ species passenger skills:[moving]{
 	}
 	
 	
-	reflex request when: not on_board{
-		waiting_time <- waiting_time + step;
-		if location distance_to target.location<eps{
-			do arrive;
-		}
-		else{
-			ask bus at_distance(eps){
-				stop next_s <- line.stops first_with (each.location distance_to myself.next_stop_loc < eps);
-        		stop cur_s  <- line.stops first_with (each.location distance_to myself.location < eps);
-				if next_s != nil and cur_s != nil{
-					int idx_cur  <- line.stops index_of cur_s;
-					int idx_next <- line.stops index_of next_s;
-					bool correct_direction <- (idx_next - idx_cur)*direction>0;
-					if correct_direction and length(passengers)+1<capacity{
-						myself.current_bus <- self;
-						add myself to: passengers;
-						myself.on_board <- true;
-						myself.color <- #green;
-						myself.updated <- true;
-					}
-				}
+	/* actions */
+	action reach_target{
+		
+		if current_bus != nil{
+			ask current_bus{
+				do get_off(myself);
 			}
 		}
+		write string(self) + " arrived at " + self.target;
+		write "waiting time: " +string(waiting_time/120)+" min";
+		write "time to reach: " +string(time_to_reach_target/120)+" min";
+		write "";
+		nb_passengers<-nb_passengers-1;
+		do die;
 	}
+	
+	
+	action get_off{
+		remove item:self from:current_bus.passengers;
+		
+		current_bus<-nil;
+		on_board <- false;
+		color <- #orange;
+	}
+	
+	action update_next_stop{
+		way_index <- way_index + 1;
+
+		list cur_edge <- list(way.edges[way_index]);
+		point p0 <- point(cur_edge[0]);
+		point p1 <- point(cur_edge[1]);
+		
+		next_stop_loc <- location distance_to p0<eps? p1:p0;
+		updated <- true;
+	}
+	
+	reflex update_metrics{
+		time_to_reach_target <- time_to_reach_target+step;
+		if not on_board{
+			waiting_time <- waiting_time + step;
+		}
+	}
+	
+	action is_valid_bus(bus b){
+		stop next_s <- b.line.stops first_with (each.location distance_to next_stop_loc < eps);
+		stop cur_s  <- b.line.stops first_with (each.location distance_to location < eps);
+		if next_s != nil and cur_s != nil{
+			int idx_cur  <- b.line.stops index_of cur_s;
+			int idx_next <- b.line.stops index_of next_s;
+			bool correct_direction <- (idx_next - idx_cur)*b.direction>0;
+			return correct_direction and length(b.passengers)+1<b.capacity;
+		}
+		return false;
+	}
+	
+	action get_on(bus b){
+		current_bus <- b;
+		ask b{
+			do get_on(myself);
+		}
+		on_board <- true;
+		color <- #green;
+		updated <- true;
+	}
+	
+	
 }
 
 
