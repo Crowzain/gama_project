@@ -105,16 +105,18 @@ global {
 			location<-source.location;
 			
 			way <- path_between(bus_graph, source, target);
-			if length(way.vertices)>0{
-				list cur_edge <- list(way.edges[0]);
-				point p0 <- point(cur_edge[0]);
-				point p1 <- point(cur_edge[1]);
-				
-				next_stop_loc <- location distance_to p0 <eps? p1:p0; // merge node in the same location
+			
+			// while path is empty, new target is generated
+			loop while: length(way.vertices)=0{
+				target <- one_of(stop_index where (each.activated=true));
+				way <- path_between(bus_graph, source, target);
 			}
-			else{
-				do die;
-			}
+			list cur_edge <- list(way.edges[0]);
+			point p0 <- point(cur_edge[0]);
+			point p1 <- point(cur_edge[1]);
+			
+			next_stop_loc <- location distance_to p0 <eps? p1:p0; // merge node in the same location
+
 		}
 		
 		//filter unused stop by killing them
