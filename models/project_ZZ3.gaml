@@ -248,12 +248,30 @@ species passenger skills:[moving]{
 	bool updated <- false;
 	
 	bool on_board <- false;
+	float waiting_time <-0.0#s;
+	float time_to_reach_target <-0.0#s;
 	
 	
 	aspect base {
 		draw square(50) color: color border: #black;
 	}
 	
+	
+	action arrive{
+		if current_bus != nil{
+			remove item:self from:current_bus.passengers;
+		}
+		write string(self) + " arrived at " + self.target;
+		write "waiting time: " +string(waiting_time/120)+" min";
+		write "time to reach:" +string(time_to_reach_target/120)+" min";
+		write "";
+		nb_passengers<-nb_passengers-1;
+		do die;
+	}
+	
+	reflex update{
+		time_to_reach_target <- time_to_reach_target+step;
+	}
 	
 	reflex move when: on_board{
 		
@@ -282,10 +300,7 @@ species passenger skills:[moving]{
 				}
 			}
 			else{
-				remove item:self from:current_bus.passengers;
-				write string(self) + " arrived at " + self.target;
-				nb_passengers<-nb_passengers-1;
-				do die;
+				do arrive;
 			}
 		}
 		else{
@@ -295,10 +310,9 @@ species passenger skills:[moving]{
 	
 	
 	reflex request when: not on_board{
+		waiting_time <- waiting_time + step;
 		if location distance_to target.location<eps{
-			write string(self) + " arrived at " + self.target;
-			nb_passengers<-nb_passengers-1;
-			do die;
+			do arrive;
 		}
 		else{
 			ask bus at_distance(eps){
