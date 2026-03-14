@@ -10,27 +10,43 @@ model projectZZ3
 
 global {
 	
-	file shape_file_buildings <- shape_file("../includes/reduced_data/reduced_buildings.shp");
-	file shape_file_roads <- shape_file("../includes/reduced_data/reduced_roads.shp");
-	file file_stops<-shape_file("../includes/reduced_data/reduced_stops.shp");
-	file file_lines<-csv_file("../includes/reduced_data/lines.txt", ",", "'", true);
-	
+	//files variables
+	file shape_file_buildings <- shape_file("../includes/reduced_data/reduced_buildings.shp") const:true;
+	file shape_file_roads <- shape_file("../includes/reduced_data/reduced_roads.shp") const:true;
+	file file_stops<-shape_file("../includes/reduced_data/reduced_stops.shp") const:true;
+	file file_lines<-csv_file("../includes/reduced_data/lines.txt", ",", "'", true) const:true;
 	geometry shape <- envelope(shape_file_roads);
+	
+	//parameters
 	int nb_passengers <- 1000;
-	int min_capacity <- 5;
-	int max_capacity <- 30;
+	int min_capacity <- 5 const:true;
+	int max_capacity <- 30 const:true;
+	float eps <- 0.1 const:true;
+	
+
+	//graphs	
 	graph road_graph <- as_edge_graph(shape_file_roads);
 	graph<stop,stop> bus_graph <-graph([]);
-	float eps <- 0.1;
 	
-	
+	//index map
 	map<string,stop> stop_index <- [];
-	map<string,stop> bus_index <- [];
 	
 	reflex stop_simulation when: (nb_passengers = 0) {
 		do pause;
-	} 
-	/* Database settings
+	}
+	
+	action filter_stops{
+		ask stop {
+			if not activated{
+				remove from:stop_index index:self.stop_id;
+				do die;
+				
+			}
+		}
+	}
+	
+	/* 
+	//Database settings
 	map<string,string> MYSQL <- [
 					'host'::'127.0.0.1',
 					'dbtype'::'MySQL',
@@ -65,78 +81,40 @@ global {
 			string file_name <- "../includes/reduced_data/"+self.route_id+".txt";
 			file file_line <- csv_file(file_name, ",", "'", true);
 			stop s;
-			stop node1;
-			stop node2;
 			
 			// get route_id stored into the header
 			route_id <- file_line.attributes[0];
 			loop el over: file_line {
 				s <- stop_index[string(el)];
-				
-				
-				// case when stops list is empty
-				if length(stops)>0 and s != nil{
-					if s.location distance_to node2.location >=10*eps{
-						s.activated <- true;
-						add s to: stops;
-							
-						
-						if (s in bus_graph.vertices) {
-							node1 <- (bus_graph.vertices where (each.location distance_to s.location<eps))[0];
-						}
-						else{
-							node1 <- s;
-						}
-						// bus_graph construction must be improved/fixed
-						bus_graph <- bus_graph add_edge (node2::node1);
-						node2 <- node1;
-					}
-				}
-				
-				else{
-					if s != nil{
-						s.activated <- true;
-						stops <- list(s);
-						node2 <- s;
-
-					}
-	
-				}
-				
+				do add_stop_to_list(s);
 			}
 			create bus with:[location::stops[0].location, line::self];
 		}
+		
+		do filter_stops;
+		
 		create passenger number:nb_passengers{
-			source <- one_of(stop_index where (each.activated=true));
-			target <- one_of(stop_index where (each.activated=true));
-
+			source <- one_of(stop_index);
 			location<-source.location;
 			
+			
+			target <- one_of(stop_index);
 			way <- path_between(bus_graph, source, target);
 			
 			// while path is empty, new target is generated
 			loop while: length(way.edges)=0{
-				target <- one_of(stop_index where (each.activated=true));
+				target <- one_of(stop_index);
 				way <- path_between(bus_graph, source, target);
 			}
 			list cur_edge <- list(way.edges[0]);
 			point p0 <- point(cur_edge[0]);
 			point p1 <- point(cur_edge[1]);
 			
-			next_stop_loc <- location distance_to p0 <eps? p1:p0; // merge node in the same location
+			next_stop_loc <- location distance_to p0 <eps? p1:p0;
 
-		}
-		
-		//filter unused stop by killing them
-		ask stop {
-			if not activated{
-				do die;
-			}
 		}
 	}
 }
-
-
 
 
 
@@ -179,6 +157,37 @@ species busLine{
             path seg <- path_between(road_graph, node1, node2);
  			draw shape(seg) color: route_color width: 6;
         }
+    }
+    
+    action add_stop_to_list(stop current_stop){
+		
+		stop previous_stop;
+		
+		// case when stops list is empty
+		if length(stops)>0 and current_stop != nil{
+			previous_stop <- last(stops);
+			
+			// check that new stop is at a different location from the previous one
+			if current_stop.location distance_to previous_stop.location >=eps{
+				current_stop.activated <- true;
+				add current_stop to: stops;
+				do update_bus_graph(previous_stop, current_stop);
+			}
+		}
+		
+		else{
+			if current_stop != nil{
+				current_stop.activated <- true;
+				stops <- list(current_stop);
+			}
+		}
+    }
+    
+    action update_bus_graph(stop previous_stop, stop current_stop){
+    	if (current_stop in bus_graph.vertices) {
+			current_stop <- (bus_graph.vertices where (each.location distance_to current_stop.location<eps))[0];
+		}
+		bus_graph <- bus_graph add_edge (previous_stop::current_stop);
     }
 }
 
@@ -322,6 +331,13 @@ species passenger skills:[moving]{
 		}
 	}
 	
+	reflex update_metrics{
+		time_to_reach_target <- time_to_reach_target+step;
+		if not on_board{
+			waiting_time <- waiting_time + step;
+		}
+	}
+	
 	
 	/* actions */
 	action reach_target{
@@ -359,13 +375,6 @@ species passenger skills:[moving]{
 		updated <- true;
 	}
 	
-	reflex update_metrics{
-		time_to_reach_target <- time_to_reach_target+step;
-		if not on_board{
-			waiting_time <- waiting_time + step;
-		}
-	}
-	
 	action is_valid_bus(bus b){
 		stop next_s <- b.line.stops first_with (each.location distance_to next_stop_loc < eps);
 		stop cur_s  <- b.line.stops first_with (each.location distance_to location < eps);
@@ -401,11 +410,6 @@ species road  skills:[road_skill]{
 }
 
 experiment road_traffic type: gui {
-	parameter "Shapefile for the buildings:" var: shape_file_buildings category: "GIS" ;
-	parameter "Shapefile for the roads:" var: shape_file_roads category: "GIS" ;
-	parameter "Shapefile for the bounds:" var: shape_file_roads category: "GIS" ;
-	//parameter "Number of bus lines" var: nb_bus_lines category: "Bus";
-
 	output {
 		display city_display type:3d {
 
