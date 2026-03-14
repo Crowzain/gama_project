@@ -16,7 +16,7 @@ global {
 	file file_lines<-csv_file("../includes/reduced_data/lines.txt", ",", "'", true);
 	
 	geometry shape <- envelope(shape_file_roads);
-	int nb_passengers <- 1000;
+	int nb_passengers <- 10000;
 	int min_capacity <- 5;
 	int max_capacity <- 30;
 	graph road_graph <- as_edge_graph(shape_file_roads);
@@ -43,8 +43,9 @@ global {
 	*/
 	
 	
+	
 	init {		
-		step <- 1#s;
+		step <- 2#s;
 		seed<-4.0;
 		create building from: shape_file_buildings;
 
@@ -69,26 +70,30 @@ global {
 			route_id <- file_line.attributes[0];
 			loop el over: file_line {
 				s <- stop_index[string(el)];
-				s.activated <-true;
+				
 				
 				// case when stops list is empty
 				if length(stops)>0 and s != nil{
-					add s to: stops;
+					if s.location distance_to node2.location >=10*eps{
+						s.activated <- true;
+						add s to: stops;
+							
 						
-					
-					if (s in bus_graph.vertices) {
-						node1 <- (bus_graph.vertices where (each.location distance_to s.location<eps))[0];
+						if (s in bus_graph.vertices) {
+							node1 <- (bus_graph.vertices where (each.location distance_to s.location<eps))[0];
+						}
+						else{
+							node1 <- s;
+						}
+						// bus_graph construction must be improved/fixed
+						bus_graph <- bus_graph add_edge (node2::node1);
+						node2 <- node1;
 					}
-					else{
-						node1 <- s;
-					}
-					// bus_graph construction must be improved/fixed
-					bus_graph <- bus_graph add_edge (node2::node1);
-					node2 <- node1;
 				}
 				
 				else{
 					if s != nil{
+						s.activated <- true;
 						stops <- list(s);
 						node2 <- s;
 
@@ -128,6 +133,7 @@ global {
 		}
 	}
 }
+
 
 
 
