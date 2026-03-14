@@ -1,7 +1,6 @@
-IDFM-gtfs*
-ile-de-france-260112-free.shp*
+*IDFM-gtfs*
+*ile-de-france-260112-free.shp*
 reduced_data*
-projetZZ3 alias
 *.db
 __pycache__
 *.DS_Store
