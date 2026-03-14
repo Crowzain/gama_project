@@ -14,6 +14,12 @@ After cloning the repo, move to includes and execute:
 ```
 $> python .
 ```
+Options:
+* `-v`, `--verbose`: verbose mode
+* `--duckdb`: use a duckdb database 
+* `--mysql`: use a mysql database (server connexion required, see instructions below)
+* `--sqlite`: use a sqlite database
+
 This script also create csv files related to lines, and smaller files according to a smaller working zone (10th arrondissement)
 into `reduced_data` folder.
 

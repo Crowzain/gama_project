@@ -8,11 +8,41 @@ import re
 from enum import Enum
 from urllib.request import urlretrieve
 import zipfile
+import getopt, sys
 
 # environment file to handle MySQL database
 load_dotenv()
 
-VERBOSE = True
+class DB_TYPE(Enum):
+	DUCKDB = 0,
+	MY_SQL = 1,
+	SQLITE = 2
+
+verbose = False
+db = DB_TYPE.DUCKDB
+
+args = sys.argv[1:]
+options = "v:"
+long_options = ["verbose", "duckdb", "mysql", "sqlite"]
+
+dict_options = {
+	"--duckdb":DB_TYPE.DUCKDB,
+	"--mysql":DB_TYPE.MY_SQL,
+	"--sqlite":DB_TYPE.SQLITE
+}
+
+try:
+    arguments, values = getopt.getopt(args, options, long_options)
+    for currentArg, _ in arguments:
+        if currentArg in ("-v", "--verbose"):
+            verbose = True
+        if currentArg in dict_options:
+            db = dict_options[currentArg]
+		
+except getopt.error as err:
+    print(str(err)) 
+
+
 
 # define paths
 PROJECT_ROOT = Path(".")
@@ -30,7 +60,7 @@ if not GTFS_REPERTORY_PATH.exists():
 	GTFS_ZIP_FILENAME = PROJECT_ROOT /"IDFM-gtfs.zip"
 	
 	path, headers = urlretrieve(GTFS_URL, GTFS_ZIP_FILENAME)
-	if VERBOSE:
+	if verbose:
 		for name, value in headers.items():
 			print(name, value)
 	with zipfile.ZipFile(GTFS_ZIP_FILENAME, "r") as zip_ref:
@@ -44,7 +74,7 @@ if not SHAPEFILE_REPERTORY_PATH.exists():
 	SHAPEFILE_ZIP_FILENAME = PROJECT_ROOT /"ile-de-france-latest-free.shp.zip"
 	
 	path, headers = urlretrieve(SHAPEFILE_URL, SHAPEFILE_ZIP_FILENAME)
-	if VERBOSE:
+	if verbose:
 		for name, value in headers.items():
 			print(name, value)
 	with zipfile.ZipFile(SHAPEFILE_ZIP_FILENAME, "r") as zip_ref:
@@ -64,11 +94,6 @@ class box:
 	bottom: float
 	top: float
 
-class DB_TYPE(Enum):
-	DUCKDB = 0,
-	MY_SQL = 1,
-	SQLITE = 2
-
 DB_NAME_DICT = {
 	"DUCKDB": "",
 	"MY_SQL": "mysql_db",
@@ -81,8 +106,7 @@ DB_PATH_DICT = {
 	"SQLITE" : PROJECT_ROOT / "gama_project_sqlite.db"
 }
 
-default_box_13 = box(2.2577, 2.4115, 48.8186, 48.8988)
-default_box_10 = box(2.34781, 2.37206, 48.86600, 48.88456)
+default_box_10 = box(2.34781, 2.37206, 48.86500, 48.88456)
 
 def connect_db(
 		db_type:DB_TYPE,
@@ -183,7 +207,8 @@ def create_tables(
 				"input_file": f"{GTFS_REPERTORY_PATH/table}.txt"
 				})
 		else:
-			print(table)
+			if verbose:
+				print(table)
 			create_table_query = f"""
 				CREATE OR REPLACE TABLE {f"{prefix[db_type.value]}.{table}" if db_type!=DB_TYPE.DUCKDB else table} AS 
 					SELECT * FROM read_csv($input_file)
@@ -379,15 +404,8 @@ def get_reduce_bus_stop(
 
 
 if __name__=="__main__":
-	con = connect_db(DB_TYPE.DUCKDB)
-	#con2 = connect_db(DB_TYPE.MY_SQL)
-	#con3 = connect_db(DB_TYPE.SQLITE)
-
-	create_tables(DB_TYPE.DUCKDB, con)
-	#create_tables(DB_TYPE.MY_SQL, con2)
-	#create_tables(DB_TYPE.SQLITE, con3)
-	#get_reduce_bus_stop(default_box_10, con, write_file=False)
-	#get_reduce_bus_stop(default_box_10, con2, write_file=False)
+	con = connect_db(db)
+	create_tables(db, con, verbose=verbose)
 	get_reduce_bus_stop(default_box_10, con, write_file=True, stops_threshold_line=5)
 
 
