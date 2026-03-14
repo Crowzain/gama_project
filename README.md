@@ -4,7 +4,7 @@
 ## 1. Table of content
 - 1. [Table of Contents](#1-table-of-content)
 - 2. [Installation](#2-installation)
-- 3. [Perspectives](#3-perspectives-ideas)
+- 3. [Perspectives](#3-to-do-and-perspectives)
 - 4. [Authors and acknowledgment](#4-perspectives-ideas)
 
 ## 2. Installation
@@ -27,6 +27,13 @@ To stop and remove the container:
 ```
 $> docker compose down -v
 ```
+
+## 3. To do and perspectives
+- [ ] add random traffic
+- [ ] add more buses on lines
+- [ ] adjust bus speed (according to traffic and acceleration)
+- [ ] consider personal behavior
+- [ ] consider source and target not necessarily on stops
 
 ## 4. Author
 This project is currently developped by Pierre B.
