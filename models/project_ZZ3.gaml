@@ -25,6 +25,7 @@ global {
 	
 	map<string,stop> stop_index <- [];
 	map<string,stop> bus_index <- [];
+	
 
 	/* Database settings
 	map<string,string> MYSQL <- [
@@ -73,11 +74,15 @@ global {
 				if length(stops)>0 and s != nil{
 					add s to: stops;
 						
-					node1 <- s;
 					
+					if s in bus_graph.vertices{
+						node1 <- (bus_graph.vertices where (each.location=s.location))[0];
+					}
+					else{
+						node1 <- s;
+					}
 					// bus_graph construction must be improved/fixed
 					bus_graph <- bus_graph add_edge (node2::node1);
-					bus_graph <- bus_graph add_edge (node1::node2);
 					node2 <- node1;
 				}
 				
@@ -93,22 +98,19 @@ global {
 			}
 			create bus with:[location::stops[0].location, line::self];
 		}
-		create passenger number:1{
+		create passenger number:10{
 			source <- one_of(stop_index where (each.activated=true));
 			target <- one_of(stop_index where (each.activated=true));
 
 			location<-source.location;
 			
-			//again bus_graph must be modified, sometimes way is empty, whereas graph is connected (a path between each pair of vertices does exist)
-
-
 			way <- path_between(bus_graph, source, target);
 			if length(way.vertices)>0{
 				list cur_edge <- list(way.edges[0]);
 				point p0 <- point(cur_edge[0]);
 				point p1 <- point(cur_edge[1]);
 				
-				next_stop_loc <- location distance_to p0 <eps? p1:p0;
+				next_stop_loc <- location distance_to p0 <eps? p1:p0; // merge node in the same location
 			}
 			else{
 				do die;
@@ -214,7 +216,7 @@ species bus skills:[moving]{
 			next_stop <- line.stops[next_stop_index];
 		}
 		counter <- counter + step;
-		if counter=stop_time{
+		if counter>=stop_time{
 			counter<-0.0#s;
 			at_stop<-false;
 		}
@@ -222,49 +224,6 @@ species bus skills:[moving]{
 	}
 }
 
-
-// just a try to embed bus with driving skill
-
-/*
-species bus skills:[driving]{
-	string bus_id;
-	busLine line;
-	int next_stop_index <- 1;
-	int capacity <- rnd(n_max_people) min:10 max:30;
-	list<passenger> passengers <- [];
-	float stop_time<-0.0;
-	int direction <- 1;
-	
-	stop target <- line.stops[next_stop_index];
-	
-	aspect base {
-		draw circle(20) color: line.route_color border: #black;
-	}
-	
-	action select_target_path {
-		if line.stops[next_stop_index]=nil {
-			next_stop_index <- next_stop_index+direction;
-		}
-		target <- line.stops[next_stop_index];
-		do compute_path graph: road_graph target: road_graph.vertices closest_to target;
-		next_stop_index <- (next_stop_index+direction) ;
-			target <- line.stops[next_stop_index];
-			if next_stop_index = length(self.line.stops)-1 or next_stop_index = 0{
-				direction <- direction*-1;
-			} 
-	}
-	
-	reflex choose_path when: (target = nil) or (location distance_to target.location < 1){
-		do select_target_path;
-			
-	}
-	
-	
-	reflex move when: (location distance_to target.location >= 1){
-		do drive;
-		
-	}	
-}*/
 
 
 species passenger skills:[moving]{
@@ -293,18 +252,20 @@ species passenger skills:[moving]{
 		if current_bus.at_stop{
 			if location distance_to target.location >=eps{
 				if not updated{
-					way_index <- way_index + 1;
-					
-					list cur_edge <- list(way.edges[way_index]);
-					point p0 <- point(cur_edge[0]);
-					point p1 <- point(cur_edge[1]);
-					
-					next_stop_loc <- location distance_to p0 <eps? p1:p0;
-					if current_bus.next_stop.location distance_to next_stop_loc>=eps{
-						current_bus<-nil;
-						on_board <- false;
+					if location distance_to next_stop_loc <eps{
+						way_index <- way_index + 1;
+						
+						list cur_edge <- list(way.edges[way_index]);
+						point p0 <- point(cur_edge[0]);
+						point p1 <- point(cur_edge[1]);
+						
+						next_stop_loc <- location distance_to p0 <eps? p1:p0;
+						if current_bus.next_stop.location distance_to next_stop_loc>=eps{
+							current_bus<-nil;
+							on_board <- false;
+						}
+						updated <- true;
 					}
-					updated <- true;
 				}
 			}
 			else{
@@ -331,7 +292,7 @@ species passenger skills:[moving]{
 					int idx_cur  <- line.stops index_of cur_s;
 					int idx_next <- line.stops index_of next_s;
 					bool correct_direction <- (idx_next - idx_cur)*direction>0;
-					if correct_direction{
+					if correct_direction and length(passengers)+1<capacity{
 						myself.current_bus <- self;
 						add myself to: passengers;
 						myself.on_board <- true;
