@@ -16,7 +16,7 @@ global {
 	file file_lines<-csv_file("../includes/reduced_data/lines.txt", ",", "'", true);
 	
 	geometry shape <- envelope(shape_file_roads);
-	int nb_passengers <- 10000;
+	int nb_passengers <- 1000;
 	int min_capacity <- 5;
 	int max_capacity <- 30;
 	graph road_graph <- as_edge_graph(shape_file_roads);
@@ -27,7 +27,9 @@ global {
 	map<string,stop> stop_index <- [];
 	map<string,stop> bus_index <- [];
 	
-
+	reflex stop_simulation when: (nb_passengers = 0) {
+		do pause;
+	} 
 	/* Database settings
 	map<string,string> MYSQL <- [
 					'host'::'127.0.0.1',
@@ -282,6 +284,7 @@ species passenger skills:[moving]{
 			else{
 				remove item:self from:current_bus.passengers;
 				write string(self) + " arrived at " + self.target;
+				nb_passengers<-nb_passengers-1;
 				do die;
 			}
 		}
@@ -294,6 +297,7 @@ species passenger skills:[moving]{
 	reflex request when: not on_board{
 		if location distance_to target.location<eps{
 			write string(self) + " arrived at " + self.target;
+			nb_passengers<-nb_passengers-1;
 			do die;
 		}
 		else{
@@ -330,7 +334,6 @@ experiment road_traffic type: gui {
 	parameter "Shapefile for the buildings:" var: shape_file_buildings category: "GIS" ;
 	parameter "Shapefile for the roads:" var: shape_file_roads category: "GIS" ;
 	parameter "Shapefile for the bounds:" var: shape_file_roads category: "GIS" ;
-	parameter "Number of people agents" var: nb_passengers category: "passenger" ;
 	//parameter "Number of bus lines" var: nb_bus_lines category: "Bus";
 
 	output {
@@ -345,5 +348,6 @@ experiment road_traffic type: gui {
 			species bus aspect:base ;
 			
 		}
+		monitor "Number of people agents" value: nb_passengers;
 	}
 }
