@@ -25,6 +25,7 @@ into `reduced_data` folder.
 
 ### Connect to the MySQL database
 *Docker is required*
+
 After cloning the repo, make sure that Docker is running and connect to MySQL database server by executing:
 ```
 $> docker compose up --build
