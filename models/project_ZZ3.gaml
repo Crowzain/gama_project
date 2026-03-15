@@ -23,7 +23,12 @@ global {
 	int min_capacity <- 5 const:true;
 	int max_capacity <- 30 const:true;
 	float eps <- 0.1 const:true;
-	float T_max <- 6 #h;
+	float T_max <- 6 #h const:true;
+	float lam<-5.0;
+	float spawn_frequency<-200.0#s;
+	
+	list<float> waiting_time_list <-[];
+	list<float> time_to_reach_target_list <-[];
 	
 
 	//graphs	
@@ -33,12 +38,12 @@ global {
 	//index map
 	map<string,stop> stop_index <- [];
 	
-	reflex stop_simulation when: (time > T_max or passengers_nb = 0) {
+	reflex stop_simulation when: (time > T_max or (passengers_nb = 0 and lam = 0)) {
 		do pause;
 	}
 	
-	reflex spawn when: every(15#mn) {
-		int n_new_passengers <- poisson(5);
+	reflex spawn when: every(spawn_frequency) {
+		int n_new_passengers <- poisson(lam);
 		do passenger_factory(n_new_passengers);
 		passengers_nb<-passengers_nb+n_new_passengers;
 	}
@@ -88,7 +93,7 @@ global {
 	
 	init {		
 		step <- 2#s;
-		seed<-4.0;
+		//seed<-4.0;
 		create building from: shape_file_buildings;
 
 		create road from: shape_file_roads with:[maxspeed::float(read('maxspeed'))];
@@ -376,6 +381,8 @@ species passenger skills:[moving]{
 			}
 		}
 		write string(self) + " arrived at " + self.target;
+		add waiting_time to: waiting_time_list ;
+		add time_to_reach_target to: time_to_reach_target_list;
 		write "waiting time: " +string(waiting_time/120)+" min";
 		write "time to reach: " +string(time_to_reach_target/120)+" min";
 		write "";
@@ -438,6 +445,9 @@ species road  skills:[road_skill]{
 }
 
 experiment road_traffic type: gui {
+	parameter "seed: " var: seed min: 0.0 max: 1000.0 step:1.0;
+	parameter "passenger spawn poisson parameter" var: lam min: 0.0 max: 30.0 step:1.0;
+	parameter "passenger spawn frequency" var: spawn_frequency min: 100.0#s max: 2000.0#s step:50.0#s;
 	output {
 		display city_display type:3d {
 
@@ -449,7 +459,13 @@ experiment road_traffic type: gui {
 			species busLine aspect: base refresh:false transparency:2/3;
 			species stop aspect: base refresh:false;
 			
+			
 		}
+		
 		monitor "Number of people agents" value: passengers_nb;
+		monitor "Average waiting time" value: mean(waiting_time_list)/120;
+		monitor "Average time to reach target" value: mean(time_to_reach_target_list)/120;
+		
+		
 	}
 }
