@@ -18,23 +18,24 @@ global {
 	geometry shape <- envelope(shape_file_roads);
 	
 	//parameters
-	int nb_passengers <- 1000;
+	int initial_passengers_nb <- 1000 const:true;
+	int passengers_nb <- initial_passengers_nb;
 	int min_capacity <- 5 const:true;
 	int max_capacity <- 30 const:true;
 	float eps <- 0.1 const:true;
+	float T_max <- 6 #h;
 	
 
 	//graphs	
-	graph road_graph <- as_edge_graph(shape_file_roads);
+	graph road_graph <- as_edge_graph(shape_file_roads) const:true;
 	graph<stop,stop> bus_graph <-graph([]);
 	
 	//index map
 	map<string,stop> stop_index <- [];
 	
-	reflex stop_simulation when: (nb_passengers = 0) {
+	reflex stop_simulation when: (time > T_max or passengers_nb = 0) {
 		do pause;
 	}
-	
 	
 	action filter_stops{
 		ask stop {
@@ -45,13 +46,20 @@ global {
 		}
 	}
 	
-	action passenger_factory(int number){
-		create passenger number:number{
+	action passenger_factory(int n_new_passengers){
+		create passenger number:n_new_passengers{
 			source <- one_of(stop_index);
 			location<-source.location;
 			
 			do find_valid_target;
 			do set_next_stop_loc;
+		}
+	}
+	
+	action fill_stop_index_map{
+		ask stop {
+    		stop_index[stop_id] <- self;
+    		location <- shape_file_roads closest_to(self);
 		}
 	}
 	
@@ -79,20 +87,16 @@ global {
 
 		create road from: shape_file_roads with:[maxspeed::float(read('maxspeed'))];
 		
-		
 		create stop from:file_stops with:[stop_id::string(read ('stop_id')), location::point(read('geom'))];
-		ask stop {
-    		stop_index[stop_id] <- self;
-    		location <- shape_file_roads closest_to(self);
-		}
+		
+		do fill_stop_index_map;
 
 		create busLine from:file_lines with:[route_id::string (read ('name'))]{
 			route_color <- rnd_color(255);
 			string file_name <- "../includes/reduced_data/"+self.route_id+".txt";
 			file file_line <- csv_file(file_name, ",", "'", true);
 			
-			// get route_id stored into the header
-			route_id <- file_line.attributes[0];
+			route_id <- file_line.attributes[0]; // get route_id stored into the header
 			do build_stops_list(file_line);
 			
 			create bus with:[location::stops[0].location, line::self];
@@ -100,7 +104,7 @@ global {
 		
 		do filter_stops;
 		
-		do passenger_factory(nb_passengers);
+		do passenger_factory(passengers_nb);
 	}
 }
 
@@ -369,7 +373,7 @@ species passenger skills:[moving]{
 		write "waiting time: " +string(waiting_time/120)+" min";
 		write "time to reach: " +string(time_to_reach_target/120)+" min";
 		write "";
-		nb_passengers<-nb_passengers-1;
+		passengers_nb<-passengers_nb-1;
 		do die;
 	}
 	
@@ -440,6 +444,6 @@ experiment road_traffic type: gui {
 			species stop aspect: base refresh:false;
 			
 		}
-		monitor "Number of people agents" value: nb_passengers;
+		monitor "Number of people agents" value: passengers_nb;
 	}
 }
