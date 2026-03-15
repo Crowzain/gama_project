@@ -18,7 +18,7 @@ global {
 	geometry shape <- envelope(shape_file_roads);
 	
 	//parameters
-	int initial_passengers_nb <- 1000 const:true;
+	int initial_passengers_nb <- 10 const:true;
 	int passengers_nb <- initial_passengers_nb;
 	int min_capacity <- 5 const:true;
 	int max_capacity <- 30 const:true;
@@ -35,6 +35,12 @@ global {
 	
 	reflex stop_simulation when: (time > T_max or passengers_nb = 0) {
 		do pause;
+	}
+	
+	reflex spawn when: every(15#mn) {
+		int n_new_passengers <- poisson(5);
+		do passenger_factory(n_new_passengers);
+		passengers_nb<-passengers_nb+n_new_passengers;
 	}
 	
 	action filter_stops{
