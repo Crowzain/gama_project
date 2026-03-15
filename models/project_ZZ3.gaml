@@ -35,13 +35,23 @@ global {
 		do pause;
 	}
 	
+	
 	action filter_stops{
 		ask stop {
 			if not activated{
 				remove from:stop_index index:self.stop_id;
 				do die;
-				
 			}
+		}
+	}
+	
+	action passenger_factory(int number){
+		create passenger number:number{
+			source <- one_of(stop_index);
+			location<-source.location;
+			
+			do find_valid_target;
+			do set_next_stop_loc;
 		}
 	}
 	
@@ -80,39 +90,17 @@ global {
 			route_color <- rnd_color(255);
 			string file_name <- "../includes/reduced_data/"+self.route_id+".txt";
 			file file_line <- csv_file(file_name, ",", "'", true);
-			stop s;
 			
 			// get route_id stored into the header
 			route_id <- file_line.attributes[0];
-			loop el over: file_line {
-				s <- stop_index[string(el)];
-				do add_stop_to_list(s);
-			}
+			do build_stops_list(file_line);
+			
 			create bus with:[location::stops[0].location, line::self];
 		}
 		
 		do filter_stops;
 		
-		create passenger number:nb_passengers{
-			source <- one_of(stop_index);
-			location<-source.location;
-			
-			
-			target <- one_of(stop_index);
-			way <- path_between(bus_graph, source, target);
-			
-			// while path is empty, new target is generated
-			loop while: length(way.edges)=0{
-				target <- one_of(stop_index);
-				way <- path_between(bus_graph, source, target);
-			}
-			list cur_edge <- list(way.edges[0]);
-			point p0 <- point(cur_edge[0]);
-			point p1 <- point(cur_edge[1]);
-			
-			next_stop_loc <- location distance_to p0 <eps? p1:p0;
-
-		}
+		do passenger_factory(nb_passengers);
 	}
 }
 
@@ -159,27 +147,38 @@ species busLine{
         }
     }
     
-    action add_stop_to_list(stop current_stop){
-		
+    action build_stops_list(file stops_file){
+    	stop s;
+    	loop el over: stops_file {
+			s <- stop_index[string(el)];
+			do update_stops_list(s);
+		}
+    }
+    
+    action update_stops_list(stop current_stop){
 		stop previous_stop;
-		
-		// case when stops list is empty
 		if length(stops)>0 and current_stop != nil{
 			previous_stop <- last(stops);
-			
-			// check that new stop is at a different location from the previous one
-			if current_stop.location distance_to previous_stop.location >=eps{
-				current_stop.activated <- true;
-				add current_stop to: stops;
-				do update_bus_graph(previous_stop, current_stop);
-			}
+			do add_to_stops_list(previous_stop, current_stop);
 		}
 		
 		else{
-			if current_stop != nil{
-				current_stop.activated <- true;
-				stops <- list(current_stop);
-			}
+			do create_stops_list(current_stop);
+		}
+    }
+    
+    action create_stops_list(stop current_stop){
+    	if current_stop != nil{
+			current_stop.activated <- true;
+			stops <- list(current_stop);
+		}
+    }
+    
+    action add_to_stops_list(stop previous_stop, stop current_stop){
+    	if current_stop.location distance_to previous_stop.location >=eps{
+			current_stop.activated <- true;
+			add current_stop to: stops;
+			do update_bus_graph(previous_stop, current_stop);
 		}
     }
     
@@ -228,7 +227,6 @@ species bus skills:[moving]{
 	}
 	
 	reflex reach_stop when:at_stop{
-		
 		if counter = 0.0{
 			do update_next_stop;
 		}
@@ -297,13 +295,7 @@ species passenger skills:[moving]{
 			do reach_target;
 		}
 		else{ 
-			loop b over:(bus at_distance(eps)){
-				if is_valid_bus(b){
-					do get_on(b);
-					break;
-				}	
-			}
-			
+			do request_neighborhood;
 		}
 	}
 	
@@ -340,6 +332,32 @@ species passenger skills:[moving]{
 	
 	
 	/* actions */
+	action request_neighborhood{
+		loop b over:(bus at_distance(eps)){
+			if is_valid_bus(b){
+				do get_on(b);
+				break;
+			}	
+		}
+	}
+	
+	action find_valid_target{
+		target <- one_of(stop_index);
+		way <- path_between(bus_graph, source, target);
+		loop while: length(way.edges)=0{
+			target <- one_of(stop_index);
+			way <- path_between(bus_graph, source, target);
+		}
+	}
+	
+	action set_next_stop_loc{
+		list cur_edge <- list(way.edges[0]);
+		point p0 <- point(cur_edge[0]);
+		point p1 <- point(cur_edge[1]);
+		
+		next_stop_loc <- location distance_to p0 <eps? p1:p0;
+	}
+	
 	action reach_target{
 		
 		if current_bus != nil{
@@ -417,9 +435,9 @@ experiment road_traffic type: gui {
 			species road aspect: base refresh:false;
 			
 			species passenger aspect: base;
+			species bus aspect:base;
 			species busLine aspect: base refresh:false transparency:2/3;
 			species stop aspect: base refresh:false;
-			species bus aspect:base ;
 			
 		}
 		monitor "Number of people agents" value: nb_passengers;
