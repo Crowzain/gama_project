@@ -8,6 +8,8 @@
 
 model projectZZ3
 
+import "traffic.gaml"
+
 global {
 	
 	//files variables
@@ -26,11 +28,15 @@ global {
 	bool verbose <- false const:true;
 	bool buildings_mode<- false const:true;
 	float T_max <- 6 #h const:true;
-	float lam<-30.0;
+	float lam<-0.0;
 	float spawn_frequency<-6.5#mn;
 	
 	list<float> waiting_time_list <-[];
 	list<float> time_to_reach_target_list <-[];
+	
+	
+	
+	list<road> open_roads;
 	
 
 	//graphs	
@@ -40,7 +46,7 @@ global {
 	//index map
 	map<string,stop> stop_index <- [];
 	
-	reflex stop_simulation when: (time > T_max or (passengers_nb = 0 and lam = 0)) {
+	reflex stop_simulation when: (time >= T_max or (passengers_nb = 0 and lam = 0)) {
 		do pause;
 	}
 	
@@ -76,6 +82,80 @@ global {
 		}
 	}
 	
+	action update_motorbike_population (int new_number) {
+			int delta <- length(motorbike) - new_number;
+			if (delta > 0) {
+				ask delta among motorbike {
+					do unregister;
+					do die;
+				}
+	
+			} else if (delta < 0) {
+				create motorbike number: -delta ;
+			}
+		}
+		action update_car_population (int new_number) {
+			int delta <- length(car) - new_number;
+			if (delta > 0) {
+				ask delta among car {
+					do unregister;
+					do die;
+				}
+	
+			} else if (delta < 0) {
+				create car number: -delta ;
+			}
+	
+		}
+	action update_road_scenario (int scenario) {
+		open_roads <- scenario = 1 ? road where !each.s1_closed : (scenario = 2 ? road where !each.s2_closed : list(road));
+		// Change the display of roads
+		list<road> closed_roads <- road - open_roads;
+		ask open_roads {
+		closed <- false;
+		}
+	
+		ask closed_roads {
+			closed <- true;
+		}
+	
+		ask agents of_generic_species vehicle {
+			do unregister;
+			if (current_road in closed_roads) {
+				do die;
+			}
+	
+		}
+	
+		ask building {
+			closest_intersection <- nil;
+		}
+	
+		ask intersection {
+			do die;
+		}
+		
+		graph g <- as_edge_graph(open_roads);
+	
+		write g;
+		loop pt over: g.vertices {
+			create intersection with: (shape: pt);
+		}
+	
+		ask building {
+			closest_intersection <- intersection closest_to self;
+		}
+		ask road {
+			vehicle_ordering <- nil;
+		}
+	//build the graph from the roads and intersections
+	road_network <- as_driving_graph(open_roads, intersection) with_shortest_path_algorithm #FloydWarshall;
+	//geometry road_geometry <- union(open_roads accumulate (each.shape));
+	ask agents of_generic_species vehicle {
+		do select_target_path;
+	} 
+}
+	
 	/* 
 	//Database settings
 	map<string,string> MYSQL <- [
@@ -99,8 +179,31 @@ global {
 		if (buildings_mode){
 			create building from: shape_file_buildings;
 		}
-
+		
+		
+		
 		create road from: shape_file_roads with:[maxspeed::float(read('maxspeed'))];
+		
+		ask road {
+			agent ag <- building closest_to self;
+			float dist <- ag = nil ? 8.0 : max(min( ag distance_to self - 5.0, 8.0), 2.0);
+			num_lanes <- int(dist / lane_width);
+			capacity <- 1 + (num_lanes * shape.perimeter/3);
+		}
+		int cars <- 500;
+		int motos <- 1000;
+		
+		do update_car_population(cars);
+		do update_motorbike_population( motos);
+		do update_road_scenario(0); 
+		
+		loop r over: road {
+			if (!r.oneway) {
+				create road with: (shape: polyline(reverse(r.shape.points)), name: r.name, type: r.type, s1_closed: r.s1_closed, s2_closed: r.s2_closed);
+			} 
+		}
+
+		
 		
 		create stop from:file_stops with:[stop_id::string(read ('stop_id')), location::point(read('geom'))];
 		
@@ -128,14 +231,14 @@ global {
 species building{
 	
 	string type const:true;
-
+	intersection closest_intersection <- intersection closest_to self;
 	rgb color <- #grey const:true;
 	aspect base {
 		draw shape color: color ;
 
 	}
 }
-
+/* 
 species stop {
 	rgb color <- #yellow const:true;
 	string stop_id;
@@ -146,7 +249,7 @@ species stop {
 			draw circle(10) color: color border: #black;	
 		}
 	}
-}
+}*/
 
 	
 species busLine{
@@ -208,7 +311,7 @@ species busLine{
     }
 }
 
-species bus skills:[moving]{
+species bus parent:vehicle{
 	/* attributes */
 	// id attributes
 	string bus_id;
@@ -237,9 +340,10 @@ species bus skills:[moving]{
 
 	reflex move when: not at_stop{
 		speed<-30 #km/#h;
-		do goto(target:next_stop, on:road_graph, return_path:false);
+		do drive;
 		if location distance_to next_stop < eps{
 			at_stop <- true;
+			shift_pt <- compute_position();
 		}
 	}
 	
@@ -431,12 +535,12 @@ species passenger skills:[moving]{
 
 
 // should be improved to be used and to store vehicle on it for example
-species road  skills:[road_skill]{
+/*species road  skills:[road_skill]{
 	rgb color <- #black ;
 	aspect base {
 		draw shape color: color ;
 	}
-}
+}*/
 
 experiment road_traffic type: gui {
 	parameter "seed: " var: seed min: 0.0 max: 1000.0 step:1.0;
@@ -457,8 +561,8 @@ experiment road_traffic type: gui {
 		}
 		
 		monitor "Number of people agents" value: passengers_nb;
-		monitor "Average waiting time" value: mean(waiting_time_list)/300;
-		monitor "Average time to reach target" value: mean(time_to_reach_target_list)/300;
+		monitor "Average waiting time" value: mean(waiting_time_list)/120;
+		monitor "Average time to reach target" value: mean(time_to_reach_target_list)/120;
 		
 		
 	}
