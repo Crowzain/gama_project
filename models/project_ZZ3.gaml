@@ -23,9 +23,10 @@ global {
 	int min_capacity <- 5 const:true;
 	int max_capacity <- 30 const:true;
 	float eps <- 0.1 const:true;
+	bool verbose <- false const:true;
 	float T_max <- 6 #h const:true;
-	float lam<-5.0;
-	float spawn_frequency<-200.0#s;
+	float lam<-30.0;
+	float spawn_frequency<-6.5#mn;
 	
 	list<float> waiting_time_list <-[];
 	list<float> time_to_reach_target_list <-[];
@@ -63,7 +64,7 @@ global {
 			location<-source.location;
 			
 			do find_valid_target;
-			do set_next_stop_loc;
+			do update_next_stop_loc;
 		}
 	}
 	
@@ -151,7 +152,6 @@ species busLine{
     rgb route_color;
 
     aspect base {
-    	location <- stops[0].location;
     	point node1;
     	point node2;
     	loop i from: 0 to:length(stops) {
@@ -231,8 +231,7 @@ species bus skills:[moving]{
 		draw circle(20) color: line.route_color border: #black;
 	}
 	
-	
-	/* behaviors */
+
 	reflex move when: not at_stop{
 		speed<-30 #km/#h;
 		do goto(target:next_stop, on:road_graph, return_path:false);
@@ -248,9 +247,6 @@ species bus skills:[moving]{
 		do wait_at_stop;
 	}
 	
-	
-
-	/* actions */
 	action update_next_stop{
 		if next_stop_index in [0, length(line.stops)-1]{
 			direction<-direction*(-1);
@@ -303,16 +299,14 @@ species passenger skills:[moving]{
 		draw square(50) color: color border: #black;
 	}
 	
-	
-	/* behaviors */
-	reflex wait when: not on_board{
-		if location distance_to target.location<eps{
-			do reach_target;
-		}
-		else{ 
-			do request_neighborhood;
+	reflex update_metrics{
+		time_to_reach_target <- time_to_reach_target+step;
+		if not on_board{
+			waiting_time <- waiting_time + step;
 		}
 	}
+	
+	
 	
 	reflex move when: on_board{
 		
@@ -323,14 +317,7 @@ species passenger skills:[moving]{
 				do reach_target;
 			}
 			else{
-				if not updated{
-					if location distance_to next_stop_loc < eps{
-						do update_next_stop;
-						if current_bus.next_stop.location distance_to next_stop_loc>=eps{
-							do get_off;
-						}
-					}
-				}
+				do update_next_stop;
 			}
 		}
 		else{
@@ -338,22 +325,46 @@ species passenger skills:[moving]{
 		}
 	}
 	
-	reflex update_metrics{
-		time_to_reach_target <- time_to_reach_target+step;
-		if not on_board{
-			waiting_time <- waiting_time + step;
+	
+	action reach_target{
+		
+		if current_bus != nil{
+			ask current_bus{
+				do get_off(myself);
+			}
+		}
+		add waiting_time to: waiting_time_list ;
+		add time_to_reach_target to: time_to_reach_target_list;
+		if (verbose){
+			write string(self) + " arrived at " + self.target;
+			write "waiting time: " +string(waiting_time/120)+" min";
+			write "time to reach: " +string(time_to_reach_target/120)+" min";
+			write "";
+		}
+		passengers_nb<-passengers_nb-1;
+		do die;
+	}
+	
+	action update_next_stop{
+		if not updated{
+			if location distance_to next_stop_loc < eps{
+				way_index <- way_index + 1;
+				do update_next_stop_loc;
+				if current_bus.next_stop.location distance_to next_stop_loc>=eps{
+					do get_off;
+				}
+			}
 		}
 	}
 	
-	
-	/* actions */
-	action request_neighborhood{
-		loop b over:(bus at_distance(eps)){
-			if is_valid_bus(b){
-				do get_on(b);
-				break;
-			}	
-		}
+	action update_next_stop_loc{
+
+		list cur_edge <- list(way.edges[way_index]);
+		point p0 <- point(cur_edge[0]);
+		point p1 <- point(cur_edge[1]);
+		
+		next_stop_loc <- location distance_to p0<eps? p1:p0;
+		updated <- true;
 	}
 	
 	action find_valid_target{
@@ -364,33 +375,7 @@ species passenger skills:[moving]{
 			way <- path_between(bus_graph, source, target);
 		}
 	}
-	
-	action set_next_stop_loc{
-		list cur_edge <- list(way.edges[0]);
-		point p0 <- point(cur_edge[0]);
-		point p1 <- point(cur_edge[1]);
 		
-		next_stop_loc <- location distance_to p0 <eps? p1:p0;
-	}
-	
-	action reach_target{
-		
-		if current_bus != nil{
-			ask current_bus{
-				do get_off(myself);
-			}
-		}
-		write string(self) + " arrived at " + self.target;
-		add waiting_time to: waiting_time_list ;
-		add time_to_reach_target to: time_to_reach_target_list;
-		write "waiting time: " +string(waiting_time/120)+" min";
-		write "time to reach: " +string(time_to_reach_target/120)+" min";
-		write "";
-		passengers_nb<-passengers_nb-1;
-		do die;
-	}
-	
-	
 	action get_off{
 		remove item:self from:current_bus.passengers;
 		
@@ -399,15 +384,23 @@ species passenger skills:[moving]{
 		color <- #orange;
 	}
 	
-	action update_next_stop{
-		way_index <- way_index + 1;
 
-		list cur_edge <- list(way.edges[way_index]);
-		point p0 <- point(cur_edge[0]);
-		point p1 <- point(cur_edge[1]);
-		
-		next_stop_loc <- location distance_to p0<eps? p1:p0;
-		updated <- true;
+	reflex wait when: not on_board{
+		if location distance_to target.location<eps{
+			do reach_target;
+		}
+		else{ 
+			do request_neighborhood;
+		}
+	}
+	
+	action request_neighborhood{
+		loop b over:(bus at_distance(eps)){
+			if is_valid_bus(b){
+				do get_on(b);
+				break;
+			}	
+		}
 	}
 	
 	action is_valid_bus(bus b){
@@ -431,8 +424,6 @@ species passenger skills:[moving]{
 		color <- #green;
 		updated <- true;
 	}
-	
-	
 }
 
 
