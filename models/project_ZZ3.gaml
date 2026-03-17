@@ -24,6 +24,7 @@ global {
 	int max_capacity <- 30 const:true;
 	float eps <- 0.1 const:true;
 	bool verbose <- false const:true;
+	bool buildings_mode<- false const:true;
 	float T_max <- 6 #h const:true;
 	float lam<-30.0;
 	float spawn_frequency<-6.5#mn;
@@ -93,9 +94,11 @@ global {
 	
 	
 	init {		
-		step <- 2#s;
+		step <- 5#s;
 		//seed<-4.0;
-		create building from: shape_file_buildings;
+		if (buildings_mode){
+			create building from: shape_file_buildings;
+		}
 
 		create road from: shape_file_roads with:[maxspeed::float(read('maxspeed'))];
 		
@@ -454,8 +457,8 @@ experiment road_traffic type: gui {
 		}
 		
 		monitor "Number of people agents" value: passengers_nb;
-		monitor "Average waiting time" value: mean(waiting_time_list)/120;
-		monitor "Average time to reach target" value: mean(time_to_reach_target_list)/120;
+		monitor "Average waiting time" value: mean(waiting_time_list)/300;
+		monitor "Average time to reach target" value: mean(time_to_reach_target_list)/300;
 		
 		
 	}
