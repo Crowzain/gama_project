@@ -1,0 +1,6 @@
+dataclasses==0.6
+dotenv==0.9.9
+duckdb==1.5.0
+pathlib==1.0.1
+python-dotenv==1.2.2
+typing==3.7.4.3
