@@ -50,6 +50,10 @@ REDUCED_DATA_PATH = PROJECT_ROOT / "reduced_data"
 SHAPEFILE_REPERTORY_PATH = PROJECT_ROOT / "ile-de-france-260112-free.shp"
 GTFS_REPERTORY_PATH = PROJECT_ROOT / "IDFM-gtfs"
 
+# create directory
+if not REDUCED_DATA_PATH.exists():
+	Path.mkdir(REDUCED_DATA_PATH)
+
 
 # download GTFS and shapefiles
 
