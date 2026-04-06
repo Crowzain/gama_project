@@ -87,13 +87,37 @@ global {
 	}
 	
 	
-	action bus_factory{
+	
+	action bus_factory_initialization(int n_buses){
 		stop s;
 		int current_stop_indx;
-		loop l over:busLine{
+		if n_buses=1{
+			loop l over:busLine{
+				do create_randomly_one_bus_on_line(l, n_buses);
+			}
+		}
+		else{
+			loop l over:busLine{
+				do create_uniformally_n_buses_on_line(l, n_buses);
+			}
+		}
+	}
+	
+	action create_randomly_one_bus_on_line(busLine l, int n_buses){
+		create bus{
+			line <- l;
+			do set_random_initial_state;
+			do update_next_stop;
+		}
+	}
+	
+	action create_uniformally_n_buses_on_line(busLine l, int n_buses){
+		int line_length <- length(l.stops);
+		int gap<-max(1, line_length div n_buses);
+		loop i from:0 to:line_length-1 step:gap {
 			create bus{
 				line <- l;
-				do get_random_initial_state;
+				do set_initial_state(i);
 				do update_next_stop;
 			}
 		}
@@ -142,12 +166,10 @@ global {
 			
 			route_id <- file_line.attributes[0]; // get route_id stored into the header
 			do build_stops_list(file_line);
-			
-			
 		}
 		
 		do filter_stops;
-		do bus_factory;
+		do bus_factory_initialization(3);
 		
 		do passenger_factory(passengers_nb);
 	}
@@ -263,7 +285,6 @@ species bus skills:[moving]{
 		draw circle(20) color: line.route_color border: #black;
 	}
 	
-
 	reflex move when: not at_stop{
 		speed<-30 #km/#h;
 		do goto(target:next_stop, on:road_graph, return_path:false);
@@ -284,6 +305,7 @@ species bus skills:[moving]{
 		next_stop_index <- next_stop_index + direction;
 		next_stop <- line.stops[next_stop_index];
 	}
+	
 	action update_direction{
 		if next_stop_index <= 0 or next_stop_index >=length(line.stops)-1{
 			direction<-direction*(-1);
@@ -307,16 +329,20 @@ species bus skills:[moving]{
 		add item:p to:passengers;
 	}
 	
-	action get_random_initial_state{
-		int current_stop_indx <- rnd(length(line.stops)-1);
-		location<- line.stops[current_stop_indx].location;
+	action set_random_initial_state{
+		int current_stop_index <- rnd(length(line.stops)-1);
+		location<- line.stops[current_stop_index].location;
 		direction <- rnd(1);
 		direction <- direction=1?direction:-1;
-		next_stop_index <- current_stop_indx+direction;
+		next_stop_index <- current_stop_index+direction;
+	}
+	
+	action set_initial_state(int current_stop_index){
+		location<- line.stops[current_stop_index].location;
+		direction <- 1;
+		next_stop_index <- current_stop_index+direction;
 	}
 }
-
-
 
 species passenger skills:[moving]{
 	/* attributes */
