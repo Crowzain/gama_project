@@ -23,14 +23,16 @@ global {
 	int min_capacity <- 5 const:true;
 	int max_capacity <- 30 const:true;
 	float eps <- 0.1 const:true;
-	bool verbose <- false const:true;
-	bool buildings_mode<- false const:true;
+	bool verbose_mode <- false const:true;
+	bool buildings_mode <- false const:true;
+	bool output_mode <- false const:false;
 	float T_max <- 6 #h const:true;
-	float lam<-30.0;
+	float passenger_arrival_rate<-30.0;
 	float spawn_frequency<-6.5#mn;
 	
 	list<float> waiting_time_list <-[];
 	list<float> time_to_reach_target_list <-[];
+	list<float> passengers_ratio_list <-[];
 	
 
 	//graphs	
@@ -40,12 +42,25 @@ global {
 	//index map
 	map<string,stop> stop_index <- [];
 	
-	reflex stop_simulation when: (time > T_max or (passengers_nb = 0 and lam = 0)) {
+	reflex stop_simulation when: (time > T_max or (passengers_nb = 0 and passenger_arrival_rate = 0)) {
 		do pause;
+		do write_stats;
+		
+	}
+	
+	action write_stats{
+		save [seed, quantile(waiting_time_list, 0.25), median(waiting_time_list), quantile(waiting_time_list, 0.75)]
+		to: "../results/save_wt_lam"+passenger_arrival_rate+"f_"+ spawn_frequency+ ".csv" format: "csv" rewrite:false;
+		
+		save [seed, quantile(time_to_reach_target_list, 0.25), median(time_to_reach_target_list), quantile(time_to_reach_target_list, 0.75)]
+		to: "../results/save_reach_target_lam"+passenger_arrival_rate+"f_"+ spawn_frequency+ ".csv" format: "csv" rewrite:false;
+		
+		save [seed, passengers_ratio_list]
+		to: "../results/save_list_lam"+passenger_arrival_rate+"f_"+ spawn_frequency+ ".csv" format: "csv" rewrite:false;
 	}
 	
 	reflex spawn when: every(spawn_frequency) {
-		int n_new_passengers <- poisson(lam);
+		int n_new_passengers <- poisson(passenger_arrival_rate);
 		do passenger_factory(n_new_passengers);
 		passengers_nb<-passengers_nb+n_new_passengers;
 	}
@@ -60,6 +75,8 @@ global {
 	}
 	
 	action passenger_factory(int n_new_passengers){
+
+		add (length(passenger where each.on_board)/passengers_nb) to: passengers_ratio_list;		
 		create passenger number:n_new_passengers{
 			source <- one_of(stop_index);
 			location<-source.location;
@@ -69,6 +86,18 @@ global {
 		}
 	}
 	
+	
+	action bus_factory{
+		stop s;
+		int current_stop_indx;
+		loop l over:busLine{
+			create bus{
+				line <- l;
+				do get_random_initial_state;
+				do update_next_stop;
+			}
+		}
+	}
 	action fill_stop_index_map{
 		ask stop {
     		stop_index[stop_id] <- self;
@@ -114,10 +143,11 @@ global {
 			route_id <- file_line.attributes[0]; // get route_id stored into the header
 			do build_stops_list(file_line);
 			
-			create bus with:[location::stops[0].location, line::self];
+			
 		}
 		
 		do filter_stops;
+		do bus_factory;
 		
 		do passenger_factory(passengers_nb);
 	}
@@ -132,7 +162,6 @@ species building{
 	rgb color <- #grey const:true;
 	aspect base {
 		draw shape color: color ;
-
 	}
 }
 
@@ -215,9 +244,9 @@ species bus skills:[moving]{
 	busLine line;
 	
 	// routing attributes
-	int next_stop_index <- 1;
-	int direction <- 1;
-	stop next_stop <- line.stops[next_stop_index];
+	int next_stop_index;
+	int direction;
+	stop next_stop;
 	bool at_stop<-true;
 	float counter<-0.0#s;
 	
@@ -251,11 +280,15 @@ species bus skills:[moving]{
 	}
 	
 	action update_next_stop{
-		if next_stop_index in [0, length(line.stops)-1]{
-			direction<-direction*(-1);
-		}
+		do update_direction;
 		next_stop_index <- next_stop_index + direction;
 		next_stop <- line.stops[next_stop_index];
+	}
+	action update_direction{
+		if next_stop_index <= 0 or next_stop_index >=length(line.stops)-1{
+			direction<-direction*(-1);
+			next_stop_index <- next_stop_index + direction;
+		}
 	}
 	
 	action wait_at_stop{
@@ -272,6 +305,14 @@ species bus skills:[moving]{
 	
 	action get_on(passenger p){
 		add item:p to:passengers;
+	}
+	
+	action get_random_initial_state{
+		int current_stop_indx <- rnd(length(line.stops)-1);
+		location<- line.stops[current_stop_indx].location;
+		direction <- rnd(1);
+		direction <- direction=1?direction:-1;
+		next_stop_index <- current_stop_indx+direction;
 	}
 }
 
@@ -338,7 +379,7 @@ species passenger skills:[moving]{
 		}
 		add waiting_time to: waiting_time_list ;
 		add time_to_reach_target to: time_to_reach_target_list;
-		if (verbose){
+		if (verbose_mode){
 			write string(self) + " arrived at " + self.target;
 			write "waiting time: " +string(waiting_time/120)+" min";
 			write "time to reach: " +string(time_to_reach_target/120)+" min";
@@ -440,7 +481,7 @@ species road  skills:[road_skill]{
 
 experiment road_traffic type: gui {
 	parameter "seed: " var: seed min: 0.0 max: 1000.0 step:1.0;
-	parameter "passenger spawn poisson parameter" var: lam min: 0.0 max: 30.0 step:1.0;
+	parameter "passenger spawn poisson parameter" var: passenger_arrival_rate min: 0.0 max: 30.0 step:1.0;
 	parameter "passenger spawn frequency" var: spawn_frequency min: 100.0#s max: 2000.0#s step:50.0#s;
 	output {
 		display city_display type:3d {
