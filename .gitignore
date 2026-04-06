@@ -2,7 +2,8 @@
 *ile-de-france-260112-free.shp*
 reduced_data*
 *.db
-__pycache__
+*__pycache__
 *.DS_Store
 .vscode
 .env
+results/
