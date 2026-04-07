@@ -88,7 +88,7 @@ global {
 	
 	
 	
-	action bus_factory_initialization(int n_buses){
+	action initialize_buses(int n_buses){
 		stop s;
 		int current_stop_indx;
 		if n_buses=1{
@@ -148,7 +148,7 @@ global {
 	
 	init {		
 		step <- 5#s;
-		//seed<-4.0;
+		seed<-4.0;
 		if (buildings_mode){
 			create building from: shape_file_buildings;
 		}
@@ -169,13 +169,11 @@ global {
 		}
 		
 		do filter_stops;
-		do bus_factory_initialization(3);
+		do initialize_buses(3);
 		
 		do passenger_factory(passengers_nb);
 	}
 }
-
-
 
 species building{
 	
@@ -199,7 +197,6 @@ species stop {
 	}
 }
 
-	
 species busLine{
 	string route_id;
     list<stop> stops <-nil ;
@@ -506,7 +503,7 @@ species road  skills:[road_skill]{
 }
 
 experiment road_traffic type: gui {
-	parameter "seed: " var: seed min: 0.0 max: 1000.0 step:1.0;
+	//parameter "seed: " var: seed min: 0.0 max: 1000.0 step:1.0;
 	parameter "passenger spawn poisson parameter" var: passenger_arrival_rate min: 0.0 max: 30.0 step:1.0;
 	parameter "passenger spawn frequency" var: spawn_frequency min: 100.0#s max: 2000.0#s step:50.0#s;
 	output {
