@@ -10,39 +10,10 @@ from urllib.request import urlretrieve
 import zipfile
 import getopt, sys
 
-# environment file to handle MySQL database
-load_dotenv()
-
 class DB_TYPE(Enum):
 	DUCKDB = 0
 	MY_SQL = 1
 	SQLITE = 2
-
-verbose = False
-db = DB_TYPE.DUCKDB
-
-args = sys.argv[1:]
-options = "v"
-long_options = ["verbose", "duckdb", "mysql", "sqlite"]
-
-dict_options = {
-	"--duckdb":DB_TYPE.DUCKDB,
-	"--mysql":DB_TYPE.MY_SQL,
-	"--sqlite":DB_TYPE.SQLITE
-}
-
-try:
-    arguments, values = getopt.getopt(args, options, long_options)
-    for currentArg, _ in arguments:
-        if currentArg in ("-v", "--verbose"):
-            verbose = True
-        if currentArg in dict_options:
-            db = dict_options[currentArg]
-		
-except getopt.error as err:
-    print(str(err)) 
-
-
 
 # define paths
 PROJECT_ROOT = Path(".")
@@ -54,37 +25,94 @@ GTFS_REPERTORY_PATH = PROJECT_ROOT / "IDFM-gtfs"
 if not REDUCED_DATA_PATH.exists():
 	Path.mkdir(REDUCED_DATA_PATH)
 
+def read_cli_option()->tuple[bool, DB_TYPE]:
 
-# download GTFS and shapefiles
+	verbose = False
+	db = DB_TYPE.DUCKDB
 
-# GTFS
-if not GTFS_REPERTORY_PATH.exists():
+	args = sys.argv[1:]
+	options = "v"
+	long_options = ["verbose", "duckdb", "mysql", "sqlite"]
+
+	dict_options = {
+		"--duckdb":DB_TYPE.DUCKDB,
+		"--mysql":DB_TYPE.MY_SQL,
+		"--sqlite":DB_TYPE.SQLITE
+	}
+
+	try:
+		arguments, _ = getopt.getopt(args, options, long_options)
+		for currentArg, _ in arguments:
+			if currentArg in ("-v", "--verbose"):
+				verbose = True
+			if currentArg in dict_options:
+				db = dict_options[currentArg]
+			
+	except getopt.error as err:
+		print(str(err))
 	
-	GTFS_URL = "https://eu.ftp.opendatasoft.com/stif/GTFS/IDFM-gtfs.zip"
-	GTFS_ZIP_FILENAME = PROJECT_ROOT /"IDFM-gtfs.zip"
+	return verbose, db
+
+def import_data(
+		gtfs_url:str|None=None,
+		shapefile_url:str|None=None,
+		verbose:bool=False,
+		gtfs_zip_path:str|Path|None=None,
+		shapefile_zip_path:str|Path|None=None,
+		)->None:
+	if not GTFS_REPERTORY_PATH.exists():
+		import_gtfs(gtfs_url, gtfs_zip_path, verbose)
+	elif verbose:
+		print("GTFS repertory does already exist")
+		
+	if not SHAPEFILE_REPERTORY_PATH.exists():
+		import_shapefiles(shapefile_url, shapefile_zip_path, verbose)
+	elif verbose:
+		print("Shapefiles repertory does already exist")
 	
-	path, headers = urlretrieve(GTFS_URL, GTFS_ZIP_FILENAME)
+	return None
+
+def import_gtfs(
+		gtfs_url:str|None=None,
+		gtfs_zip_path:str|Path|None=None,
+		verbose:bool=False
+		)->None:	
+	
+	if gtfs_url is None: gtfs_url = "https://eu.ftp.opendatasoft.com/stif/GTFS/IDFM-gtfs.zip"
+	if gtfs_zip_path is None: gtfs_zip_path = PROJECT_ROOT /"IDFM-gtfs.zip"
+
+	import_external_repertories(gtfs_url, gtfs_zip_path, verbose)
+	return None
+	
+def import_shapefiles(
+		shapefile_url:str|None=None,
+		shapefile_zip_path:str|Path|None=None,
+		verbose:bool=False
+		)->None:
+	
+	if shapefile_url is None: shapefile_url = "https://download.geofabrik.de/europe/france/ile-de-france-latest-free.shp.zip"
+	if shapefile_zip_path is None: shapefile_zip_path = PROJECT_ROOT /"ile-de-france-latest-free.shp.zip"
+
+	import_external_repertories(shapefile_url, shapefile_zip_path, verbose)
+	return None
+	
+def import_external_repertories(
+		url:str, 
+		zip_path:str|Path,
+		verbose:bool=False
+		)->None:
+	
+	_, headers = urlretrieve(url, zip_path)
+	
 	if verbose:
 		for name, value in headers.items():
 			print(name, value)
-	with zipfile.ZipFile(GTFS_ZIP_FILENAME, "r") as zip_ref:
-		Path.mkdir(GTFS_REPERTORY_PATH, mode=0o755)
-		zip_ref.extractall(GTFS_REPERTORY_PATH)
-
-# shapefiles
-if not SHAPEFILE_REPERTORY_PATH.exists():
 	
-	SHAPEFILE_URL = "https://download.geofabrik.de/europe/france/ile-de-france-latest-free.shp.zip"
-	SHAPEFILE_ZIP_FILENAME = PROJECT_ROOT /"ile-de-france-latest-free.shp.zip"
-	
-	path, headers = urlretrieve(SHAPEFILE_URL, SHAPEFILE_ZIP_FILENAME)
-	if verbose:
-		for name, value in headers.items():
-			print(name, value)
-	with zipfile.ZipFile(SHAPEFILE_ZIP_FILENAME, "r") as zip_ref:
+	with zipfile.ZipFile(zip_path, "r") as zip_ref:
 		Path.mkdir(SHAPEFILE_REPERTORY_PATH, mode=0o755)
 		zip_ref.extractall(SHAPEFILE_REPERTORY_PATH)
-
+	
+	return None
 
 # create an immutable data strucure to store boundaries
 @dataclass(frozen=True)
@@ -129,6 +157,8 @@ def connect_db(
 			con = con.execute(f"""USE {str(DB_NAME_DICT["SQLITE"])};""")
 			
 		case DB_TYPE.MY_SQL:
+			# environment file to handle MySQL database
+			load_dotenv()
 			con = dd.connect()
 			con = con.execute("INSTALL mysql;")
 			con = con.execute("LOAD mysql;")
@@ -234,7 +264,7 @@ def create_tables(
 		elif db_type == DB_TYPE.SQLITE:
 			con.sql("SELECT name FROM sqlite_master WHERE type='table';").show()
 		else:
-			con.sql(f"""SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = {DB_NAME_DICT['MY_SQL']};""").show()
+			con.sql(f"SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = {DB_NAME_DICT['MY_SQL']};").show()
 	return con
 
 
@@ -420,6 +450,8 @@ def get_reduce_bus_stop(
 
 
 if __name__=="__main__":
+	verbose, db = read_cli_option()
+	import_data()
 	con = connect_db(db)
 	create_tables(db, con, verbose=verbose)
 	get_reduce_bus_stop(default_box_10, con, write_file=True, stops_threshold_line=5)
