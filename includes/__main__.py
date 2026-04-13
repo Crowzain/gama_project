@@ -14,15 +14,15 @@ import getopt, sys
 load_dotenv()
 
 class DB_TYPE(Enum):
-	DUCKDB = 0,
-	MY_SQL = 1,
+	DUCKDB = 0
+	MY_SQL = 1
 	SQLITE = 2
 
 verbose = False
 db = DB_TYPE.DUCKDB
 
 args = sys.argv[1:]
-options = "v:"
+options = "v"
 long_options = ["verbose", "duckdb", "mysql", "sqlite"]
 
 dict_options = {
@@ -118,9 +118,16 @@ def connect_db(
 
 	match db_type:
 		case DB_TYPE.SQLITE:
-			con = dd.connect(DB_PATH_DICT["SQLITE"])
+			con = dd.connect()
 			con = con.execute("INSTALL sqlite;")
 			con = con.execute("LOAD sqlite;")
+			
+			con = con.execute(f"""
+					ATTACH '{str(DB_PATH_DICT["SQLITE"])}' AS {DB_NAME_DICT["SQLITE"]} (TYPE sqlite);
+					""")
+			
+			con = con.execute(f"""USE {str(DB_NAME_DICT["SQLITE"])};""")
+			
 		case DB_TYPE.MY_SQL:
 			con = dd.connect()
 			con = con.execute("INSTALL mysql;")
@@ -149,7 +156,7 @@ def connect_db(
 			con = con.execute(f"""
 					ATTACH 'host=localhost user=root port={port} database={database}' AS {DB_NAME_DICT["MY_SQL"]} (TYPE mysql);
 					""")
-			con = con.execute("""USE mysql_db;""")
+			con = con.execute(f"""USE {str(DB_NAME_DICT["MY_SQL"])};""")
 		case DB_TYPE.DUCKDB:
 			con = dd.connect(DB_PATH_DICT[db_type.name])
 		case _:
@@ -222,7 +229,12 @@ def create_tables(
 				})
 		
 	if verbose:
-		con.sql(f"SHOW ALL TABLES;").show()
+		if db_type == DB_TYPE.DUCKDB:
+			con.sql("SHOW ALL TABLES;").show()
+		elif db_type == DB_TYPE.SQLITE:
+			con.sql("SELECT name FROM sqlite_master WHERE type='table';").show()
+		else:
+			con.sql(f"""SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = {DB_NAME_DICT['MY_SQL']};""").show()
 	return con
 
 
