@@ -4,8 +4,9 @@
 ## 1. Table of content
 - 1. [Table of Contents](#1-table-of-content)
 - 2. [Installation](#2-installation)
-- 3. [To do and perspectives](#3-to-do-and-perspectives)
-- 4. [Author](#4-author)
+- 3. [Fix me](#3-fix-me)
+- 4. [To do and perspectives](#4-to-do-and-perspectives)
+- 5. [Author](#5-author)
 
 ## 2. Installation
 
@@ -20,28 +21,36 @@ Options:
 * `--mysql`: use a mysql database (server connexion required, see instructions below)
 * `--sqlite`: use a sqlite database
 
-This script also create csv files related to lines, and smaller files according to a smaller working zone (10th arrondissement)
+This script also creates csv files related to lines, and smaller files according to a smaller working zone (10th arrondissement)
 into `reduced_data` folder.
 
 ### Connect to the MySQL database
-*Docker is required*
 
-After cloning the repo, make sure that Docker is running and connect to MySQL database server by executing:
+> [!IMPORTANT]
+> *Docker is required*
+
+After cloning the repo, make sure that Docker is running and then connect to MySQL database server by executing:
 ```
 $> docker compose up --build
 ```
 
 To stop and remove the container:
 ```
-$> docker compose down -v
+$> docker compose down
 ```
+> [!NOTE]
+> if you do not want persistant database, you can delete it by adding `-v` option.
 
-## 3. To do and perspectives
-- [ ] add random traffic
-- [ ] add more buses on lines
-- [ ] adjust bus speed (according to traffic and acceleration)
-- [ ] consider personal behavior
-- [ ] consider source and target not necessarily on stops
+## 3. Fix me
+* [ ] MySQL does not operate time casting into *stop_times* table
+* [ ] requirements must be reduced
 
-## 4. Author
+## 4. To do and perspectives
+* [x] add more buses on lines
+* [ ] add random traffic
+* [ ] adjust bus speed (according to traffic and acceleration)
+* [ ] consider personal behavior
+* [ ] consider source and target not necessarily on stops
+
+## 5. Author
 This project is currently developped by Pierre B.
