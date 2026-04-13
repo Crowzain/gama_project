@@ -86,8 +86,6 @@ global {
 		}
 	}
 	
-	
-	
 	action initialize_buses(int n_buses){
 		stop s;
 		int current_stop_indx;
@@ -122,6 +120,7 @@ global {
 			}
 		}
 	}
+	
 	action fill_stop_index_map{
 		ask stop {
     		stop_index[stop_id] <- self;
@@ -175,7 +174,7 @@ global {
 	}
 }
 
-species building{
+species building schedules: []{
 	
 	string type const:true;
 
@@ -185,7 +184,7 @@ species building{
 	}
 }
 
-species stop {
+species stop schedules: []{
 	rgb color <- #yellow const:true;
 	string stop_id;
 	bool activated<-false; // variable to only display used stops 
@@ -197,7 +196,7 @@ species stop {
 	}
 }
 
-species busLine{
+species busLine schedules: []{
 	string route_id;
     list<stop> stops <-nil ;
     rgb route_color;
@@ -492,7 +491,6 @@ species passenger skills:[moving]{
 		updated <- true;
 	}
 }
-
 
 // should be improved to be used and to store vehicle on it for example
 species road  skills:[road_skill]{
