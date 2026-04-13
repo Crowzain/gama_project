@@ -17,13 +17,20 @@ class DB_TYPE(Enum):
 
 # define paths
 PROJECT_ROOT = Path(".")
-REDUCED_DATA_PATH = PROJECT_ROOT / "reduced_data"
 SHAPEFILE_REPERTORY_PATH = PROJECT_ROOT / "ile-de-france-260112-free.shp"
 GTFS_REPERTORY_PATH = PROJECT_ROOT / "IDFM-gtfs"
 
-# create directory
-if not REDUCED_DATA_PATH.exists():
-	Path.mkdir(REDUCED_DATA_PATH)
+def create_reduced_data_repertory(
+		repertory_name:str|Path|None=None	
+	)->Path:
+	if repertory_name is None: repertory_name = PROJECT_ROOT / "reduced_data"
+	elif isinstance(repertory_name, str): repertory_name = PROJECT_ROOT / repertory_name
+	
+	if not repertory_name.exists():
+		Path.mkdir(repertory_name)
+	return repertory_name
+
+REDUCED_DATA_PATH = create_reduced_data_repertory()
 
 def read_cli_option()->tuple[bool, DB_TYPE]:
 
@@ -59,7 +66,7 @@ def import_data(
 		verbose:bool=False,
 		gtfs_zip_path:str|Path|None=None,
 		shapefile_zip_path:str|Path|None=None,
-		)->None:
+	)->None:
 	if not GTFS_REPERTORY_PATH.exists():
 		import_gtfs(gtfs_url, gtfs_zip_path, verbose)
 	elif verbose:
