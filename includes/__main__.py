@@ -207,7 +207,7 @@ def create_tables(
 		tables:Iterable[str]|None=None,
 		verbose:bool=False,
 		box:box|None=None
-	)->dd.DuckDBPyConnection:
+	)->None:
 	
 	if con is None:
 		con = connect_db(db_type)
@@ -272,7 +272,7 @@ def create_tables(
 			con.sql("SELECT name FROM sqlite_master WHERE type='table';").show()
 		else:
 			con.sql(f"SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = {DB_NAME_DICT['MY_SQL']};").show()
-	return con
+	return None
 
 
 def reduce_shapefiles(
@@ -389,15 +389,26 @@ def clear_files(
 		file.unlink()
 	return None
 
-def get_reduce_bus_stop(
+def write_bus_stop_csv(
+	box:box,
+	con:dd.DuckDBPyConnection,
+	stops_threshold_line:int=20,
+	nb_lines_max:int=100,
+):
+	request_bus_stop_in_box(box, con, stops_threshold_line, nb_lines_max)
+	output = con.fetchall()
+	write_bus_lines_list_csv(output)
+	write_bus_lines_csv(output)
+
+	return None
+
+def request_bus_stop_in_box(
 		box:box,
 		con:dd.DuckDBPyConnection,
 		stops_threshold_line:int=20,
 		nb_lines_max:int=100,
-		write_file:bool=False
 	)->None:
 	
-
 	con.execute("""
 		WITH 
 			filtered_stops AS (
@@ -445,27 +456,41 @@ def get_reduce_bus_stop(
 			"nb_lines": nb_lines_max
 		}
 	)
-	output = con.fetchall()
-	if write_file:
-		new_file_lines = REDUCED_DATA_PATH/"lines.txt"
-		with open(new_file_lines, "w") as f1:
-			f1.write("name\n")
-			for line in output:
-				new_file = REDUCED_DATA_PATH/f"{line[0]}.txt"
-				with open(new_file, "w") as f:
-					f.write(f"{line[0]}\n")
-					f1.write(f"{line[0]}\n")
-					for stop in line[1]:
-						f.write(f"{stop}\n")
 	return None
 
+def write_bus_lines_list_csv(
+		output:list[tuple[str,list[str]]],
+)->None:
+	lines_file_name = REDUCED_DATA_PATH/"lines.txt"
+
+	with open(lines_file_name, "w") as lines_file:
+		lines_file.write("name\n")
+		for line in output:
+			lines_file.write(f"{line[0]}\n")
+
+def write_bus_lines_csv(
+		output:list[tuple[str,list[str]]],
+)->None:
+	for line in output:
+		bus_line_path = REDUCED_DATA_PATH/f"{line[0]}.txt"
+		fill_stop_into_bus_line_csv(bus_line_path, line)
+	return None
+
+def fill_stop_into_bus_line_csv(
+		file_path:Path,
+		line:tuple[str,list[str]]
+)->None:
+	with open(file_path, "w") as f:
+		f.write(f"{line[0]}\n")
+		for stop in line[1]:
+			f.write(f"{stop}\n")
 
 if __name__=="__main__":
 	verbose, db = read_cli_option()
 	import_data()
 	con = connect_db(db)
 	create_tables(db, con, verbose=verbose)
-	get_reduce_bus_stop(default_box_10, con, write_file=True, stops_threshold_line=5)
+	write_bus_stop_csv(default_box_10, con, stops_threshold_line=5)
 
 
 	reduce_shapefiles(con, default_box_10)
