@@ -3,17 +3,122 @@ from pathlib import Path
 from dataclasses import dataclass
 from typing import Iterable
 from dotenv import load_dotenv
+import abc
 import os
 import re
-from enum import Enum
 from urllib.request import urlretrieve
 import zipfile
 import getopt, sys
 
-class DB_TYPE(Enum):
-	DUCKDB = 0
-	MY_SQL = 1
-	SQLITE = 2
+class DBConnector(abc.ABC):
+	def __init__(self) -> None:
+		super().__init__()
+		self.con = dd.connect()
+		self.name = None
+		self.path = None
+		self.prefix = None
+	
+	@abc.abstractmethod
+	def connect(self):
+		pass
+
+	def show(self) -> None:
+		self.con.sql("SHOW ALL TABLES;").show()
+		return None
+
+class DuckDB_Connector(DBConnector):
+	def __init__(
+			self, 
+			path:Path|None=None,
+			) -> None:
+		
+		super().__init__()
+		self.path = path or PROJECT_ROOT / "gama_project.db"
+		self.connect()
+
+		return None
+	
+	def connect(self)->None:
+		self.con = dd.connect(self.path)
+		return None
+
+class SQLite_Connector(DBConnector):
+	def __init__(
+			self,
+			name:str|None=None,
+			path:Path|None=None
+			) -> None:
+		super().__init__()
+		self.name = name or "gama_project_sqlite"
+		self.path = path or PROJECT_ROOT / "gama_project_sqlite.db"
+		self.prefix = "main"
+		
+	def connect(self)->None:
+		self.con = dd.connect()
+		self.con.execute("INSTALL sqlite;")
+		self.con.execute("LOAD sqlite;")
+		
+		self.con.execute(f"""
+				ATTACH '{self.name}' AS {self.name} (TYPE sqlite);
+				""")
+		
+		self.con.execute("""USE $1;""", [self.name])
+		return None
+	
+
+class MySQL_Connector(DBConnector):
+	def __init__(
+			self, 
+			name:str|None=None,
+			host:str|None=None,
+			user:str|None=None
+			) -> None:
+		
+		super().__init__()
+		load_dotenv()
+		self.name = name or "mysql_db"
+		self.prefix = f"{self.name}.{self.name}"
+
+		self.host = host or "127.0.0.1"
+		self.user = user or "root"
+		self.port = int(os.environ["PORT1"])
+		self.database = os.environ["DATABASE"]
+
+		self.connect()
+
+		return None
+	
+	def connect(self):
+		# environment file to handle MySQL database
+		self.con = dd.connect()
+		self.con.execute("INSTALL mysql;")
+		self.con.execute("LOAD mysql;")
+		self.con.execute(
+			"""
+				CREATE SECRET (
+					TYPE mysql,
+					HOST $host,
+					PORT $port,
+					DATABASE $database,
+					USER $user,
+					PASSWORD $passwd
+				);
+			""",
+			{
+				"host":self.host,
+				"port":self.port,
+				"database":self.database,
+				"user":self.user,
+				"passwd":os.environ["PASSWD"],
+			}
+		)
+		# because no prepared available in this case, we check string validity with a RegExp
+		if not re.match(r'^[a-zA-Z0-9_]+$', self.database): raise ValueError("Invalid database name")
+		self.con.execute(f"""
+				ATTACH 'host=localhost user=root port={self.port} database={self.database}' AS {self.name} (TYPE mysql);
+				""")
+		self.con.execute(f"""USE {self.name};""")
+		return None
 
 # define paths
 PROJECT_ROOT = Path(".")
@@ -32,19 +137,19 @@ def create_reduced_data_repertory(
 
 REDUCED_DATA_PATH = create_reduced_data_repertory()
 
-def read_cli_option()->tuple[bool, DB_TYPE]:
+def read_cli_option()->tuple[bool, DBConnector]:
 
 	verbose = False
-	db = DB_TYPE.DUCKDB
+	db = DuckDB_Connector()
 
 	args = sys.argv[1:]
 	options = "v"
 	long_options = ["verbose", "duckdb", "mysql", "sqlite"]
 
 	dict_options = {
-		"--duckdb":DB_TYPE.DUCKDB,
-		"--mysql":DB_TYPE.MY_SQL,
-		"--sqlite":DB_TYPE.SQLITE
+		"--duckdb":DuckDB_Connector,
+		"--mysql":MySQL_Connector,
+		"--sqlite":SQLite_Connector
 	}
 
 	try:
@@ -53,7 +158,7 @@ def read_cli_option()->tuple[bool, DB_TYPE]:
 			if currentArg in ("-v", "--verbose"):
 				verbose = True
 			if currentArg in dict_options:
-				db = dict_options[currentArg]
+				db = dict_options[currentArg]()
 			
 	except getopt.error as err:
 		print(str(err))
@@ -133,85 +238,16 @@ class box:
 	bottom: float
 	top: float
 
-DB_NAME_DICT = {
-	"DUCKDB": "",
-	"MY_SQL": "mysql_db",
-	"SQLITE" : "gama_project_sqlite"
-}
-
-DB_PATH_DICT = {
-	"DUCKDB": PROJECT_ROOT / "gama_project.db",
-	"MY_SQL": PROJECT_ROOT,
-	"SQLITE" : PROJECT_ROOT / "gama_project_sqlite.db"
-}
-
 default_box_10 = box(2.34781, 2.37206, 48.86500, 48.88456)
 
-def connect_db(
-		db_type:DB_TYPE,
-	)->dd.DuckDBPyConnection:
-
-	match db_type:
-		case DB_TYPE.SQLITE:
-			con = dd.connect()
-			con = con.execute("INSTALL sqlite;")
-			con = con.execute("LOAD sqlite;")
-			
-			con = con.execute(f"""
-					ATTACH '{str(DB_PATH_DICT["SQLITE"])}' AS {DB_NAME_DICT["SQLITE"]} (TYPE sqlite);
-					""")
-			
-			con = con.execute(f"""USE {str(DB_NAME_DICT["SQLITE"])};""")
-			
-		case DB_TYPE.MY_SQL:
-			# environment file to handle MySQL database
-			load_dotenv()
-			con = dd.connect()
-			con = con.execute("INSTALL mysql;")
-			con = con.execute("LOAD mysql;")
-			con = con.execute("""
-				CREATE SECRET (
-				TYPE mysql,
-				HOST '127.0.0.1',
-				PORT $port,
-				DATABASE $database,
-				USER 'root',
-				PASSWORD $passwd
-			);
-			""",
-			{
-				"port":os.environ["PORT1"],
-				"database":os.environ["DATABASE"],
-				"passwd":os.environ["PASSWD"],
-			}
-			)
-			port = int(os.environ["PORT1"])
-			database = os.environ["DATABASE"]
-
-			# because no prepared available in this case, we check string validity with a RegExp
-			if not re.match(r'^[a-zA-Z0-9_]+$', database): raise ValueError("Invalid database name")
-			con = con.execute(f"""
-					ATTACH 'host=localhost user=root port={port} database={database}' AS {DB_NAME_DICT["MY_SQL"]} (TYPE mysql);
-					""")
-			con = con.execute(f"""USE {str(DB_NAME_DICT["MY_SQL"])};""")
-		case DB_TYPE.DUCKDB:
-			con = dd.connect(DB_PATH_DICT[db_type.name])
-		case _:
-			con = dd.connect(DB_PATH_DICT[db_type.name])
-	return con
-
 def create_tables(
-		db_type:DB_TYPE,
-		con:dd.DuckDBPyConnection|None=None,
+		db_connector:DBConnector,
 		input_path:str|Path|None=None,
 		tables:Iterable[str]|None=None,
 		verbose:bool=False,
 		box:box|None=None
 	)->None:
 	
-	if con is None:
-		con = connect_db(db_type)
-
 	if input_path is None:
 		input_path = GTFS_REPERTORY_PATH
 	else:
@@ -222,19 +258,15 @@ def create_tables(
 	if tables is None:
 		tables = map((lambda x: x.stem), input_path.rglob('*.txt'))
 
-	prefix = (None,
-		   f"{DB_NAME_DICT["MY_SQL"]}.{DB_NAME_DICT["MY_SQL"]}",
-		   f"{DB_NAME_DICT["SQLITE"]}.main"
-	)
 	for table in tables:
 		if "stops" == table and box is not None:
-			create_table_query = """
-				CREATE OR REPLACE TABLE $table AS 
+			create_table_query = f"""
+				CREATE OR REPLACE TABLE {f"{db_connector.prefix}.{table}" if db_connector.prefix is not None else table} AS 
 					SELECT * FROM read_csv($input_file)
 					WHERE lon>=$left AND lon<=$right AND stop_lat>=$bottom AND stop_lat<=$top;
 			"""
-			con.execute(create_table_query, parameters={
-				"table": f"{prefix[db_type.value]}.{table}" if db_type!=DB_TYPE.DUCKDB else table,
+			db_connector.con.execute(create_table_query, parameters={
+				"table": f"{db.prefix}.{table}" if db.prefix is not None else table,
 				"input_file": f"{GTFS_REPERTORY_PATH/table}.txt",
 				"left": box.left, 
 				"right": box.right, 
@@ -243,7 +275,7 @@ def create_tables(
 		elif "stop_times" == table:
 			
 			create_table_query = f"""
-				CREATE OR REPLACE TABLE {f"{prefix[db_type.value]}.{table}" if db_type!=DB_TYPE.DUCKDB else table} AS 
+				CREATE OR REPLACE TABLE {f"{db_connector.prefix}.{table}" if db_connector.prefix is not None else table} AS 
 					SELECT * REPLACE (
 							CAST(arrival_time AS TIME) AS arrival_time, 
 							CAST(departure_time AS TIME) AS departure_time
@@ -251,47 +283,40 @@ def create_tables(
 					FROM read_csv($input_file)
 					WHERE CAST (arrival_time[1:2] AS INT)<24 AND CAST (departure_time[1:2] AS INT)<24;
 			"""
-			con.execute(create_table_query, parameters={
+			db_connector.con.execute(create_table_query, parameters={
 				"input_file": f"{GTFS_REPERTORY_PATH/table}.txt"
 				})
 		else:
 			if verbose:
 				print(table)
 			create_table_query = f"""
-				CREATE OR REPLACE TABLE {f"{prefix[db_type.value]}.{table}" if db_type!=DB_TYPE.DUCKDB else table} AS 
+				CREATE OR REPLACE TABLE {f"{db_connector.prefix}.{table}" if db_connector.prefix is not None else table} AS 
 					SELECT * FROM read_csv($input_file)
 			"""
-			con.execute(create_table_query, parameters={
+			db_connector.con.execute(create_table_query, parameters={
 				"input_file": f"{GTFS_REPERTORY_PATH/table}.txt",
 				})
 		
 	if verbose:
-		if db_type == DB_TYPE.DUCKDB:
-			con.sql("SHOW ALL TABLES;").show()
-		elif db_type == DB_TYPE.SQLITE:
-			con.sql("SELECT name FROM sqlite_master WHERE type='table';").show()
-		else:
-			con.sql(f"SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = {DB_NAME_DICT['MY_SQL']};").show()
+		db_connector.show()
 	return None
 
-
 def reduce_shapefiles(
-		con:dd.DuckDBPyConnection,
+		db_connector:DBConnector,
 		box:box,
 	)->None:
 
-	con.execute("INSTALL spatial;")
-	con.execute("LOAD spatial;")
-	reduce_roads(box, con)
-	reduce_stops(box, con)
-	reduce_buildings(box, con)
+	db_connector.con.execute("INSTALL spatial;")
+	db_connector.con.execute("LOAD spatial;")
+	reduce_roads(box, db_connector)
+	reduce_stops(box, db_connector)
+	reduce_buildings(box, db_connector)
 
 	return None
 
-
 def reduce_roads(
 		box:box,
-		con:dd.DuckDBPyConnection,
+		db_connector:DBConnector,
 		roads_path:Path|str|None=None,
 		reduced_roads_path:Path|str|None=None,
 		last_road_type_code:int=5135,
@@ -302,7 +327,7 @@ def reduce_roads(
 	if reduced_roads_path is None:
 		clear_files(REDUCED_DATA_PATH, "*reduced_roads*")
 		reduced_roads_path = REDUCED_DATA_PATH / "reduced_roads.shp"
-	con.execute(
+	db_connector.con.execute(
 		"""
 			COPY (SELECT osm_id, code, name, maxspeed, geom, ST_Length_Spheroid(geom) AS length FROM ST_ReadSHP($input_file)
 			WHERE ST_Contains(ST_MakeEnvelope($left, $bottom, $right, $top), geom) AND
@@ -324,7 +349,7 @@ def reduce_roads(
 
 def reduce_buildings(
 		box:box,
-		con:dd.DuckDBPyConnection,
+		db_connector:DBConnector,
 		building_path:Path|str|None=None,
 		reduced_building_path:Path|str|None=None,
 		apartments_office_only:bool=False
@@ -336,7 +361,7 @@ def reduce_buildings(
 		clear_files(REDUCED_DATA_PATH, "*reduced_buildings*")
 		reduced_building_path = REDUCED_DATA_PATH / "reduced_buildings.shp"
 
-	con.execute(
+	db_connector.con.execute(
 		f"""
 			COPY (SELECT * FROM ST_ReadSHP($input_file)
 			WHERE ST_Contains(ST_MakeEnvelope($left, $bottom, $right, $top), geom)
@@ -356,14 +381,14 @@ def reduce_buildings(
 
 def reduce_stops(
 		box:box,
-		con:dd.DuckDBPyConnection,
+		db_connector:DBConnector,
 		reduced_stops_path:Path|str|None=None,
 )->None:
 	if reduced_stops_path is None:
 		clear_files(REDUCED_DATA_PATH, "*reduced_stops*")
 		reduced_stops_path = REDUCED_DATA_PATH / "reduced_stops.shp"
 		
-	con.execute(
+	db_connector.con.execute(
 		"""
 			COPY (SELECT stop_id, ST_Point2D(stop_lon, stop_lat) AS geom FROM stops
 			WHERE stop_lat BETWEEN $bottom AND $top
@@ -391,12 +416,12 @@ def clear_files(
 
 def write_bus_stop_csv(
 	box:box,
-	con:dd.DuckDBPyConnection,
+	db_connector:DBConnector,
 	stops_threshold_line:int=20,
 	nb_lines_max:int=100,
 ):
-	request_bus_stop_in_box(box, con, stops_threshold_line, nb_lines_max)
-	output = con.fetchall()
+	request_bus_stop_in_box(box, db_connector, stops_threshold_line, nb_lines_max)
+	output = db_connector.con.fetchall()
 	write_bus_lines_list_csv(output)
 	write_bus_lines_csv(output)
 
@@ -404,12 +429,12 @@ def write_bus_stop_csv(
 
 def request_bus_stop_in_box(
 		box:box,
-		con:dd.DuckDBPyConnection,
+		db_connector:DBConnector,
 		stops_threshold_line:int=20,
 		nb_lines_max:int=100,
 	)->None:
 	
-	con.execute("""
+	db_connector.con.execute("""
 		WITH 
 			filtered_stops AS (
 				SELECT stop_id
@@ -488,9 +513,7 @@ def fill_stop_into_bus_line_csv(
 if __name__=="__main__":
 	verbose, db = read_cli_option()
 	import_data()
-	con = connect_db(db)
-	create_tables(db, con, verbose=verbose)
-	write_bus_stop_csv(default_box_10, con, stops_threshold_line=5)
-
-
-	reduce_shapefiles(con, default_box_10)
+	create_tables(db, verbose=verbose)
+	
+	reduce_shapefiles(db, default_box_10)
+	write_bus_stop_csv(default_box_10, db, stops_threshold_line=5)
