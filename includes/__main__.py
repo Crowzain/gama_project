@@ -300,8 +300,7 @@ def reduce_roads(
 	if roads_path is None:
 		roads_path = SHAPEFILE_REPERTORY_PATH / "gis_osm_roads_free_1.shp"
 	if reduced_roads_path is None:
-		for file in Path.glob(REDUCED_DATA_PATH, "*reduced_roads*"):
-			file.unlink()
+		clear_files(REDUCED_DATA_PATH, "*reduced_roads*")
 		reduced_roads_path = REDUCED_DATA_PATH / "reduced_roads.shp"
 	con.execute(
 		"""
@@ -334,8 +333,7 @@ def reduce_buildings(
 	if building_path is None:
 		building_path = SHAPEFILE_REPERTORY_PATH / "gis_osm_buildings_a_free_1.shp"
 	if reduced_building_path is None:
-		for file in Path.glob(REDUCED_DATA_PATH, "*reduced_buildings*"):
-			file.unlink()
+		clear_files(REDUCED_DATA_PATH, "*reduced_buildings*")
 		reduced_building_path = REDUCED_DATA_PATH / "reduced_buildings.shp"
 
 	con.execute(
@@ -362,12 +360,11 @@ def reduce_stops(
 		reduced_stops_path:Path|str|None=None,
 )->None:
 	if reduced_stops_path is None:
-		for file in Path.glob(REDUCED_DATA_PATH, "*reduced_stops*"):
-			file.unlink()
+		clear_files(REDUCED_DATA_PATH, "*reduced_stops*")
 		reduced_stops_path = REDUCED_DATA_PATH / "reduced_stops.shp"
 		
 	con.execute(
-		f"""
+		"""
 			COPY (SELECT stop_id, ST_Point2D(stop_lon, stop_lat) AS geom FROM stops
 			WHERE stop_lat BETWEEN $bottom AND $top
 			AND stop_lon BETWEEN $left AND $right) TO $output_file
@@ -384,6 +381,13 @@ def reduce_stops(
 	
 	return None
 
+def clear_files(
+		repertory_path:Path,
+		file_name_regexp:str
+	)->None:
+	for file in Path.glob(repertory_path, file_name_regexp):
+		file.unlink()
+	return None
 
 def get_reduce_bus_stop(
 		box:box,
