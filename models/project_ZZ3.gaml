@@ -75,8 +75,9 @@ global {
 	}
 	
 	action passenger_factory(int n_new_passengers){
-
+		if (output_mode and passengers_nb>0){
 			add (length(passenger where each.on_board)/passengers_nb) to: passengers_ratio_list;
+		}		
 		create passenger number:n_new_passengers{
 			source <- one_of(stop_index);
 			location<-source.location;
@@ -398,8 +399,10 @@ species passenger skills:[moving]{
 				do get_off(myself);
 			}
 		}
+		if (output_mode){
 			add waiting_time to: waiting_time_list ;
 			add time_to_reach_target to: time_to_reach_target_list;
+		}
 		if (verbose_mode){
 			write string(self) + " arrived at " + self.target;
 			write "waiting time: " +string(waiting_time/120)+" min";
