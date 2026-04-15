@@ -23,11 +23,11 @@ global {
 	int min_capacity <- 5 const:true;
 	int max_capacity <- 30 const:true;
 	float eps <- 0.1 const:true;
+	float distance_from_building_tolerance <- 50.0 const:true;
 	bool verbose_mode <- false const:true;
-	bool buildings_mode <- false const:true;
+	bool buildings_mode <- true const:true;
 	bool output_mode <- false const:false;
 	float T_max <- 6 #h const:true;
-	float passenger_arrival_rate<-0.0;
 	float spawn_frequency<-6.5#mn;
 	
 	list<float> waiting_time_list <-[];
@@ -42,7 +42,7 @@ global {
 	//index map
 	map<string,stop> stop_index <- [];
 	
-	reflex stop_simulation when: (time > T_max or (passengers_nb = 0 and passenger_arrival_rate = 0)) {
+	reflex stop_simulation when: time > T_max {
 		do pause;
 		do write_stats;
 		
@@ -50,19 +50,13 @@ global {
 	
 	action write_stats{
 		save [seed, quantile(waiting_time_list, 0.25), median(waiting_time_list), quantile(waiting_time_list, 0.75)]
-		to: "../results/save_wt_lam"+passenger_arrival_rate+"f_"+ spawn_frequency+ ".csv" format: "csv" rewrite:false;
+		to: "../results/save_wt"+"f_"+ spawn_frequency+ ".csv" format: "csv" rewrite:false;
 		
 		save [seed, quantile(time_to_reach_target_list, 0.25), median(time_to_reach_target_list), quantile(time_to_reach_target_list, 0.75)]
-		to: "../results/save_reach_target_lam"+passenger_arrival_rate+"f_"+ spawn_frequency+ ".csv" format: "csv" rewrite:false;
+		to: "../results/save_reach_target"+"f_"+ spawn_frequency+ ".csv" format: "csv" rewrite:false;
 		
 		save [seed, passengers_ratio_list]
-		to: "../results/save_list_lam"+passenger_arrival_rate+"f_"+ spawn_frequency+ ".csv" format: "csv" rewrite:false;
-	}
-	
-	reflex spawn when: every(spawn_frequency) {
-		int n_new_passengers <- poisson(passenger_arrival_rate);
-		do passenger_factory(n_new_passengers);
-		passengers_nb<-passengers_nb+n_new_passengers;
+		to: "../results/save_list"+"f_"+ spawn_frequency+ ".csv" format: "csv" rewrite:false;
 	}
 	
 	action filter_stops{
@@ -71,19 +65,6 @@ global {
 				remove from:stop_index index:self.stop_id;
 				do die;
 			}
-		}
-	}
-	
-	action passenger_factory(int n_new_passengers){
-		if (output_mode and passengers_nb>0){
-			add (length(passenger where each.on_board)/passengers_nb) to: passengers_ratio_list;
-		}		
-		create passenger number:n_new_passengers{
-			source <- one_of(stop_index);
-			location<-source.location;
-			
-			do find_valid_target;
-			do update_next_stop_loc;
 		}
 	}
 	
@@ -179,8 +160,9 @@ global {
 		
 		do filter_stops;
 		do initialize_buses(3);
-		
-		do passenger_factory(passengers_nb);
+		ask stop{
+			do call_passenger_factory;
+		}
 	}
 }
 
@@ -198,16 +180,50 @@ species building schedules: []{
 	}
 }
 
-species stop schedules: []{
+species stop{
 	rgb color <- #yellow const:true;
 	string stop_id;
 	bool activated<-false; // variable to only display used stops 
+	float passenger_arrival_rate;
+	
+	init{
+		
+		if length(building where (each.type="train_station") at_distance distance_from_building_tolerance)>0{
+			passenger_arrival_rate<-10.0;
+			write 1;
+		}
+		else{
+			passenger_arrival_rate<-1;	
+		}
+	}
 	
 	aspect base {
 		if activated {
 			draw circle(10) color: color border: #black;	
 		}
 	}
+	reflex spawn when: every(spawn_frequency) {
+		do call_passenger_factory;
+	}
+	
+	action call_passenger_factory{
+		int n_new_passengers <- poisson(passenger_arrival_rate);
+		passengers_nb<-passengers_nb+n_new_passengers;
+		
+		if (output_mode and passengers_nb>0){
+			add (length(passenger where each.on_board)/passengers_nb) to: passengers_ratio_list;
+		}		
+		
+		create passenger number:n_new_passengers{
+			source <- myself;
+			location<-source.location;
+			
+			do find_valid_target;
+			do update_next_stop_loc;
+		}
+	}
+	
+	
 }
 
 species busLine schedules: []{
@@ -517,7 +533,6 @@ species road  skills:[road_skill]{
 
 experiment road_traffic type: gui {
 	//parameter "seed: " var: seed min: 0.0 max: 1000.0 step:1.0;
-	parameter "passenger spawn poisson parameter" var: passenger_arrival_rate min: 0.0 max: 30.0 step:1.0;
 	parameter "passenger spawn frequency" var: spawn_frequency min: 100.0#s max: 2000.0#s step:50.0#s;
 	output {
 		display city_display type:3d {
