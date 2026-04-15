@@ -131,17 +131,16 @@ global {
 	
 	/* 
 	//Database settings
-	map<string,string> MYSQL <- [
-					'host'::'127.0.0.1',
-					'dbtype'::'MySQL',
+	map<string, string> MySQL <- [
+			'host'::'localhost', 
+			'dbtype'::'mysql', 
 			'database'::'mysql_db', 
-					'port'::'3306',
+			'port'::'3307', 
 			'user'::'root', 
-					'passwd'::'Iamastrongpassword']; // is it possible to access environment variable ?
-	map <string, string>  SQLITE <- [
-    	'dbtype'::'sqlite',
-    	'database'::'../includes/gama_project_sqlite.db'];
-	string QUERY <- "SELECT stop_id FROM stops";
+			'passwd'::'Iamastrongpassword'
+			]; // is it possible to access environment variable ?
+	map <string, string>  SQLITE <- ['dbtype'::'sqlite', 'database'::'../includes/gama_project_sqlite.db'];
+	string QUERY <- "SELECT stop_id FROM stops;";
 	*/
 	
 	
@@ -152,6 +151,16 @@ global {
 		if (buildings_mode){
 			create building from: shape_file_buildings;
 		}
+		
+		/* 
+		create agtDB{
+			do connect params:SQLITE;
+		}
+		ask agtDB {
+			write "Connection to SQLITE is " +  testConnection(SQLITE);
+			write select(QUERY);
+        }
+        */
 
 		create road from: shape_file_roads with:[maxspeed::float(read('maxspeed'))];
 		
@@ -162,7 +171,7 @@ global {
 		create busLine from:file_lines with:[route_id::string (read ('name'))]{
 			route_color <- rnd_color(255);
 			string file_name <- "../includes/reduced_data/"+self.route_id+".txt";
-			file file_line <- csv_file(file_name, ",", "'", true);
+			file file_line <- csv_file(file_name, ",", string, true);
 			
 			route_id <- file_line.attributes[0]; // get route_id stored into the header
 			do build_stops_list(file_line);
@@ -174,6 +183,10 @@ global {
 		do passenger_factory(passengers_nb);
 	}
 }
+
+/* 
+species agtDB parent: AgentDB {} 
+*/
 
 species building schedules: []{
 	
