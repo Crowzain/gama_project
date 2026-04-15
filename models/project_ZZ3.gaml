@@ -27,7 +27,7 @@ global {
 	bool buildings_mode <- false const:true;
 	bool output_mode <- false const:false;
 	float T_max <- 6 #h const:true;
-	float passenger_arrival_rate<-30.0;
+	float passenger_arrival_rate<-0.0;
 	float spawn_frequency<-6.5#mn;
 	
 	list<float> waiting_time_list <-[];
@@ -76,7 +76,7 @@ global {
 	
 	action passenger_factory(int n_new_passengers){
 
-		add (length(passenger where each.on_board)/passengers_nb) to: passengers_ratio_list;		
+			add (length(passenger where each.on_board)/passengers_nb) to: passengers_ratio_list;
 		create passenger number:n_new_passengers{
 			source <- one_of(stop_index);
 			location<-source.location;
@@ -111,7 +111,7 @@ global {
 	
 	action create_uniformally_n_buses_on_line(busLine l, int n_buses){
 		int line_length <- length(l.stops);
-		int gap<-max(1, line_length div n_buses);
+		int gap<-max(1, line_length-1 div n_buses);
 		loop i from:0 to:line_length-1 step:gap {
 			create bus{
 				line <- l;
@@ -133,9 +133,9 @@ global {
 	map<string,string> MYSQL <- [
 					'host'::'127.0.0.1',
 					'dbtype'::'MySQL',
-					'database'::'mysql_db',
+			'database'::'mysql_db', 
 					'port'::'3306',
-					'user'::'root',
+			'user'::'root', 
 					'passwd'::'Iamastrongpassword']; // is it possible to access environment variable ?
 	map <string, string>  SQLITE <- [
     	'dbtype'::'sqlite',
@@ -305,7 +305,6 @@ species bus skills:[moving]{
 	action update_direction{
 		if next_stop_index <= 0 or next_stop_index >=length(line.stops)-1{
 			direction<-direction*(-1);
-			next_stop_index <- next_stop_index + direction;
 		}
 	}
 	
@@ -326,7 +325,7 @@ species bus skills:[moving]{
 	}
 	
 	action set_random_initial_state{
-		int current_stop_index <- rnd(length(line.stops)-1);
+		int current_stop_index <- rnd(1, length(line.stops)-2);
 		location<- line.stops[current_stop_index].location;
 		direction <- rnd(1);
 		direction <- direction=1?direction:-1;
@@ -399,8 +398,8 @@ species passenger skills:[moving]{
 				do get_off(myself);
 			}
 		}
-		add waiting_time to: waiting_time_list ;
-		add time_to_reach_target to: time_to_reach_target_list;
+			add waiting_time to: waiting_time_list ;
+			add time_to_reach_target to: time_to_reach_target_list;
 		if (verbose_mode){
 			write string(self) + " arrived at " + self.target;
 			write "waiting time: " +string(waiting_time/120)+" min";
