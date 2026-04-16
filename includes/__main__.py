@@ -272,20 +272,6 @@ def create_tables(
 				"right": box.right, 
 				"bottom": box.bottom, 
 				"top": box.top})
-		elif "stop_times" == table:
-			
-			create_table_query = f"""
-				CREATE OR REPLACE TABLE {f"{db_connector.prefix}.{table}" if db_connector.prefix is not None else table} AS 
-					SELECT * REPLACE (
-							CAST(arrival_time AS TIME) AS arrival_time, 
-							CAST(departure_time AS TIME) AS departure_time
-							) 
-					FROM read_csv($input_file)
-					WHERE CAST (arrival_time[1:2] AS INT)<24 AND CAST (departure_time[1:2] AS INT)<24;
-			"""
-			db_connector.con.execute(create_table_query, parameters={
-				"input_file": f"{GTFS_REPERTORY_PATH/table}.txt"
-				})
 		else:
 			if verbose:
 				print(table)
@@ -433,7 +419,6 @@ def request_bus_stop_in_box(
 		stops_threshold_line:int=20,
 		nb_lines_max:int=100,
 	)->None:
-	
 	db_connector.con.execute("""
 		WITH 
 			filtered_stops AS (
@@ -463,7 +448,7 @@ def request_bus_stop_in_box(
 			candidate_stops AS (
 				SELECT stop_id, trip_id, stop_sequence FROM stop_times
 				JOIN filtered_stops USING(stop_id)
-				WHERE departure_time>make_time(7,0,0) AND arrival_time<=make_time(18,0,0)
+				WHERE CAST (departure_time[1:2] AS INT)>=7 AND CAST(arrival_time[1:2] AS INT)<=18
 			)
 			 
 		SELECT DISTINCT ON(route_id) route_id, list(stop_id ORDER BY stop_sequence) FROM candidate_stops

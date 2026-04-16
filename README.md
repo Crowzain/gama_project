@@ -42,7 +42,7 @@ $> docker compose down
 > if you do not want persistant database, you can delete it by adding `-v` option.
 
 ## 3. Fix me
-* [ ] MySQL does not operate time casting into *stop_times* table
+No known bug to fix
 
 ## 4. To do and perspectives
 * [x] add more buses on lines
