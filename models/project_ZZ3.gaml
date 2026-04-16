@@ -189,11 +189,10 @@ species stop{
 	init{
 		
 		if length(building where (each.type="train_station") at_distance distance_from_building_tolerance)>0{
-			passenger_arrival_rate<-10.0;
-			write 1;
+			passenger_arrival_rate<-7.0;
 		}
 		else{
-			passenger_arrival_rate<-1;	
+			passenger_arrival_rate<-1.0;	
 		}
 	}
 	
@@ -504,12 +503,16 @@ species passenger skills:[moving]{
 		stop next_s <- b.line.stops first_with (each.location distance_to next_stop_loc < eps);
 		stop cur_s  <- b.line.stops first_with (each.location distance_to location < eps);
 		if next_s != nil and cur_s != nil{
-			int idx_cur  <- b.line.stops index_of cur_s;
-			int idx_next <- b.line.stops index_of next_s;
-			bool correct_direction <- (idx_next - idx_cur)*b.direction>0;
-			return correct_direction and length(b.passengers)+1<b.capacity;
+			return is_right_direction(b, cur_s, next_s);
 		}
 		return false;
+	}
+	
+	action is_right_direction(bus b, stop cur_s, stop next_s){
+		int idx_cur  <- b.line.stops index_of cur_s;
+		int idx_next <- b.line.stops index_of next_s;
+		bool correct_direction <- (idx_next - idx_cur)*b.direction>0;
+		return (correct_direction and (length(b.passengers)+1)<b.capacity);
 	}
 	
 	action get_on(bus b){
