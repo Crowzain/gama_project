@@ -43,7 +43,6 @@ $> docker compose down
 
 ## 3. Fix me
 * [ ] MySQL does not operate time casting into *stop_times* table
-* [ ] requirements must be reduced
 
 ## 4. To do and perspectives
 * [x] add more buses on lines
