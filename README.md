@@ -2,11 +2,12 @@
 ------
 
 ## 1. Table of content
-- 1. [Table of Contents](#1-table-of-content)
-- 2. [Installation](#2-installation)
-- 3. [Fix me](#3-fix-me)
-- 4. [To do and perspectives](#4-to-do-and-perspectives)
-- 5. [Author](#5-author)
+1. [Table of Contents](#1-table-of-content)
+2. [Installation](#2-installation)
+3. [Fix me](#3-fix-me)
+4. [To do and perspectives](#4-to-do-and-perspectives)
+5. [Author](#5-author)
+6. [License](#6-license)
 
 ## 2. Installation
 
@@ -53,3 +54,9 @@ No known bug to fix
 
 ## 5. Author
 This project is currently developped by Pierre B.
+
+## 6. License
+This project is licensed under the **MIT License**.  
+See the [LICENSE](./LICENSE) file for full details.
+
+[![MIT License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
