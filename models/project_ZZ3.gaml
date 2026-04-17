@@ -30,6 +30,7 @@ global {
 	bool output_mode <- false const:false;
 	float T_max <- 6 #h const:true;
 	float spawn_frequency<-6.5#mn;
+	bool is_output_flag <- false;
 	
 	list<float> waiting_time_list <-[];
 	list<float> time_to_reach_target_list <-[];
@@ -45,8 +46,10 @@ global {
 	
 	reflex stop_simulation when: time > T_max {
 		do pause;
-		do write_stats;
-		
+		if not is_output_flag{
+			do write_stats;
+			is_output_flag <- true;
+		}
 	}
 	
 	action write_stats{
@@ -549,14 +552,10 @@ experiment road_traffic type: gui {
 			species bus aspect:base;
 			species busLine aspect: base refresh:false transparency:2/3;
 			species stop aspect: base refresh:false;
-			
-			
 		}
 		
 		monitor "Number of people agents" value: passengers_nb;
 		monitor "Average waiting time" value: mean(waiting_time_list)/300;
 		monitor "Average time to reach target" value: mean(time_to_reach_target_list)/300;
-		
-		
 	}
 }
