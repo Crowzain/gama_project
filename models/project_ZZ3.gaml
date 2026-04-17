@@ -24,6 +24,7 @@ global {
 	int max_capacity <- 30 const:true;
 	float eps <- 0.1 const:true;
 	float distance_from_building_tolerance <- 50.0 const:true;
+	int int_seed;
 	bool verbose_mode <- false const:true;
 	bool buildings_mode <- true const:true;
 	bool output_mode <- false const:false;
@@ -128,7 +129,8 @@ global {
 	
 	init {		
 		step <- 5#s;
-		seed<-4.0;
+		seed<-float(int_seed);
+		write seed;
 		if (buildings_mode){
 			create building from: shape_file_buildings;
 		}
@@ -535,7 +537,7 @@ species road  skills:[road_skill]{
 }
 
 experiment road_traffic type: gui {
-	//parameter "seed: " var: seed min: 0.0 max: 1000.0 step:1.0;
+	parameter "seed: " var: int_seed min: 1 max: 100 step:1;
 	parameter "passenger spawn frequency" var: spawn_frequency min: 100.0#s max: 2000.0#s step:50.0#s;
 	output {
 		display city_display type:3d {
