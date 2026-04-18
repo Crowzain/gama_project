@@ -435,12 +435,12 @@ def request_bus_stop_in_box(
 			),
 			
 			candidate_routes AS (
-				SELECT route_id FROM routes
+				SELECT route_id, route_color FROM routes
 				WHERE route_type=3
 			),
 			
 			filtered_trips AS (
-				SELECT DISTINCT ON(trip_id) trip_id, route_id FROM trips
+				SELECT DISTINCT ON(trip_id) trip_id, route_id, route_color FROM trips
 				JOIN candidate_services USING(trip_id)
 				JOIN candidate_routes USING(route_id)
 			),
@@ -451,7 +451,7 @@ def request_bus_stop_in_box(
 				WHERE CAST (departure_time[1:2] AS INT)>=7 AND CAST(arrival_time[1:2] AS INT)<=18
 			)
 			 
-		SELECT DISTINCT ON(route_id) route_id, list(stop_id ORDER BY stop_sequence) FROM candidate_stops
+		SELECT DISTINCT ON(route_id) route_id, ANY_VALUE(route_color), list(stop_id ORDER BY stop_sequence) FROM candidate_stops
 		JOIN filtered_trips USING (trip_id)
 		GROUP BY (trip_id, route_id)
 		HAVING COUNT(stop_id)>$stops_threshold_line
@@ -474,12 +474,18 @@ def write_bus_lines_list_csv(
 	lines_file_name = REDUCED_DATA_PATH/"lines.txt"
 
 	with open(lines_file_name, "w") as lines_file:
-		lines_file.write("name\n")
+		lines_file.write("name, r, g, b\n")
 		for line in output:
-			lines_file.write(f"{line[0]}\n")
+			rgb = convert_hex_into_rgb(line[1])
+			lines_file.write(f"{line[0]}, {rgb[0]}, {rgb[1]}, {rgb[2]}\n")
+
+def convert_hex_into_rgb(
+		hex:str
+)->tuple[int, int, int]:
+	return tuple(int(f"0x{(hex[i]+hex[i+1]).lower()}", 0) for i in range(0, len(hex), 2))
 
 def write_bus_lines_csv(
-		output:list[tuple[str,list[str]]],
+		output:list[tuple[str, str,list[str]]],
 )->None:
 	for line in output:
 		bus_line_path = REDUCED_DATA_PATH/f"{line[0]}.txt"
@@ -488,11 +494,11 @@ def write_bus_lines_csv(
 
 def fill_stop_into_bus_line_csv(
 		file_path:Path,
-		line:tuple[str,list[str]]
+		line:tuple[str,str, list[str]]
 )->None:
 	with open(file_path, "w") as f:
 		f.write(f"{line[0]}\n")
-		for stop in line[1]:
+		for stop in line[2]:
 			f.write(f"{stop}\n")
 
 if __name__=="__main__":

@@ -14,7 +14,7 @@ global {
 	file shape_file_buildings <- shape_file("../includes/reduced_data/reduced_buildings.shp") const:true;
 	file shape_file_roads <- shape_file("../includes/reduced_data/reduced_roads.shp") const:true;
 	file file_stops<-shape_file("../includes/reduced_data/reduced_stops.shp") const:true;
-	file file_lines<-csv_file("../includes/reduced_data/lines.txt", ",", "'", true) const:true;
+	file file_lines<-csv_file("../includes/reduced_data/lines.txt", ",", string, true) const:true;
 	geometry shape <- envelope(shape_file_roads);
 	
 	//parameters
@@ -154,8 +154,8 @@ global {
 		
 		do fill_stop_index_map;
 
-		create busLine from:file_lines with:[route_id::string (read ('name'))]{
-			route_color <- rnd_color(255);
+		create busLine from:file_lines with:[route_id::string (read ('name')), route_color::rgb([read ('r'), read ('g'), read ('b')])]{
+			
 			string file_name <- "../includes/reduced_data/"+self.route_id+".txt";
 			file file_line <- csv_file(file_name, ",", string, true);
 			
