@@ -137,14 +137,20 @@ def create_reduced_data_repertory(
 
 REDUCED_DATA_PATH = create_reduced_data_repertory()
 
-def read_cli_option()->tuple[bool, DBConnector]:
+def read_cli_option()->tuple[bool, DBConnector, int, int, bool]:
 
 	verbose = False
 	db = DuckDB_Connector()
+	stops_threshold_line = 5
+	nb_lines_max = 100
+	create_db_flag = False
 
 	args = sys.argv[1:]
 	options = "v"
-	long_options = ["verbose", "duckdb", "mysql", "sqlite"]
+	long_options = [
+		"verbose", "duckdb", "mysql", "sqlite",
+		"create-db", "stops-threshold-line=", "nb-lines-max="
+		]
 
 	dict_options = {
 		"--duckdb":DuckDB_Connector,
@@ -154,17 +160,24 @@ def read_cli_option()->tuple[bool, DBConnector]:
 
 	try:
 		arguments, _ = getopt.getopt(args, options, long_options)
-		for currentArg, _ in arguments:
+		for currentArg, currentVal in arguments:
+			print(currentArg, currentVal)
 			if currentArg in ("-v", "--verbose"):
 				verbose = True
-			if currentArg in dict_options:
+			elif currentArg in dict_options:
 				db = dict_options[currentArg]()
+			elif currentArg == "--stops-threshold-line":
+				stops_threshold_line = int(currentVal)
+			elif currentArg == "--nb-lines-max":
+				nb_lines_max = int(currentVal)
+			elif currentArg == "--create-db":
+				create_db_flag = True
 			
 	except getopt.error as err:
 		print(str(err))
 	
-	return verbose, db
-
+	return verbose, db, stops_threshold_line, nb_lines_max, create_db_flag
+	
 def import_data(
 		gtfs_url:str|None=None,
 		shapefile_url:str|None=None,
@@ -416,7 +429,7 @@ def write_bus_stop_csv(
 def request_bus_stop_in_box(
 		box:box,
 		db_connector:DBConnector,
-		stops_threshold_line:int=20,
+		stops_threshold_line:int=5,
 		nb_lines_max:int=100,
 	)->None:
 	db_connector.con.execute("""
@@ -502,9 +515,10 @@ def fill_stop_into_bus_line_csv(
 			f.write(f"{stop}\n")
 
 if __name__=="__main__":
-	verbose, db = read_cli_option()
+	verbose, db, stops_threshold_line, nb_lines_max, create_db_flag = read_cli_option()
 	import_data()
-	create_tables(db, verbose=verbose)
+	if create_db_flag:
+		create_tables(db, verbose=verbose)
 	
 	reduce_shapefiles(db, default_box_10)
-	write_bus_stop_csv(default_box_10, db, stops_threshold_line=5)
+	write_bus_stop_csv(default_box_10, db, stops_threshold_line=stops_threshold_line, nb_lines_max=nb_lines_max)

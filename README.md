@@ -21,6 +21,9 @@ Options:
 * `--duckdb`: use a duckdb database *(by default)*
 * `--mysql`: use a mysql database (server connexion required, see instructions below)
 * `--sqlite`: use a sqlite database
+* `--stops-threshold-line=#value`: minimum stops on the line in the area *(value is 20 by default)*
+* `--nb-lines-max=#value`: maximum of bus lines selected in the area *(value is 100 by default)*
+* `--create-db`: flag whether the database is written (or overwritten)
 
 This script also creates csv files related to lines, and smaller files according to a smaller working zone (10th arrondissement)
 into `reduced_data` folder.
