@@ -512,7 +512,7 @@ def request_bus_stop_in_box(
 	return None
 
 def write_bus_lines_list_csv(
-		output:list[tuple[str,list[str]]],
+		output:list[tuple[str, str, list[str]]],
 )->None:
 	lines_file_name = REDUCED_DATA_PATH/"lines.txt"
 
@@ -526,7 +526,12 @@ def write_bus_lines_list_csv(
 def convert_hex_into_rgb(
 		hex:str
 )->tuple[int, int, int]:
-	return tuple(int(f"0x{(hex[i]+hex[i+1]).lower()}", 0) for i in range(0, len(hex), 2))
+	hex = hex.lower()
+	r = int(f"0x{(hex[0]+hex[1])}", 0)
+	g = int(f"0x{(hex[2]+hex[3])}", 0)
+	b = int(f"0x{(hex[4]+hex[5])}", 0)
+	
+	return (r, g, b)
 
 def write_bus_lines_csv(
 		output:list[tuple[str, str,list[str]]],
