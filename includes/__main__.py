@@ -306,6 +306,7 @@ def reduce_shapefiles(
 	reduce_roads(box, db_connector)
 	reduce_stops(box, db_connector)
 	reduce_buildings(box, db_connector)
+	reduce_intersections(box, db_connector)
 
 	return None
 
@@ -398,6 +399,40 @@ def reduce_stops(
 		}
 	)
 	
+	return None
+
+def reduce_intersections(
+		box:box,
+		db_connector:DBConnector,
+		intersections_path:Path|str|None=None,
+		reduced_intersections_path:Path|str|None=None,
+)->None:
+	if intersections_path is None:
+		intersections_path = SHAPEFILE_REPERTORY_PATH / "gis_osm_traffic_free_1.shp"
+	if reduced_intersections_path is None:
+		clear_files(REDUCED_DATA_PATH, "*reduced_intersections*")
+		reduced_intersections_path = REDUCED_DATA_PATH / "reduced_intersections.shp"
+	
+	db_connector.con.execute(
+		f"""
+			COPY (SELECT * FROM ST_ReadSHP($input_file)
+			WHERE ST_Contains(ST_MakeEnvelope($left, $bottom, $right, $top), geom) 
+			AND (code BETWEEN 5201 AND 5204 
+			OR code = 5206 --motorway_junction
+			OR code = 5207 --turning_circle 
+			))
+			TO $output_file
+			WITH (FORMAT gdal, DRIVER 'ESRI Shapefile', LAYER_CREATION_OPTIONS 'WRITE_BBOX=YES', SRS 'EPSG:4326');
+		""",
+		{
+			"input_file": str(intersections_path),
+			"output_file": str(reduced_intersections_path),
+			"left": box.left, 
+			"bottom": box.bottom, 
+			"right": box.right, 
+			"top": box.top
+		}
+	)
 	return None
 
 def clear_files(
