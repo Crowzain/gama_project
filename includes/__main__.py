@@ -11,7 +11,7 @@ import zipfile
 import getopt, sys
 
 class DBConnector(abc.ABC):
-	def __init__(self) -> None:
+	def __init__(self):
 		super().__init__()
 		self.con = dd.connect()
 		self.name = None
@@ -30,13 +30,11 @@ class DuckDB_Connector(DBConnector):
 	def __init__(
 			self, 
 			path:Path|None=None,
-			) -> None:
+			):
 		
 		super().__init__()
 		self.path = path or PROJECT_ROOT / "gama_project.db"
 		self.connect()
-
-		return None
 	
 	def connect(self)->None:
 		self.con = dd.connect(self.path)
@@ -85,8 +83,6 @@ class MySQL_Connector(DBConnector):
 		self.database = os.environ["DATABASE"]
 
 		self.connect()
-
-		return None
 	
 	def connect(self):
 		# environment file to handle MySQL database
@@ -343,7 +339,6 @@ def reduce_roads(
 			"last_road_type_code": last_road_type_code
 		}
 	)
-	
 	return None
 
 def reduce_buildings(
@@ -491,6 +486,7 @@ def write_bus_lines_list_csv(
 		for line in output:
 			rgb = convert_hex_into_rgb(line[1])
 			lines_file.write(f"{line[0]}, {rgb[0]}, {rgb[1]}, {rgb[2]}\n")
+	return None
 
 def convert_hex_into_rgb(
 		hex:str
@@ -513,6 +509,7 @@ def fill_stop_into_bus_line_csv(
 		f.write(f"{line[0]}\n")
 		for stop in line[2]:
 			f.write(f"{stop}\n")
+	return None
 
 if __name__=="__main__":
 	verbose, db, stops_threshold_line, nb_lines_max, create_db_flag = read_cli_option()
