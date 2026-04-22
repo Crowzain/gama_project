@@ -156,8 +156,10 @@ def read_cli_option()->tuple[bool, DBConnector, int, int, bool]:
 
 	try:
 		arguments, _ = getopt.getopt(args, options, long_options)
+	except getopt.error as err:
+		print(str(err))
+	else:
 		for currentArg, currentVal in arguments:
-			print(currentArg, currentVal)
 			if currentArg in ("-v", "--verbose"):
 				verbose = True
 			elif currentArg in dict_options:
@@ -168,10 +170,6 @@ def read_cli_option()->tuple[bool, DBConnector, int, int, bool]:
 				nb_lines_max = int(currentVal)
 			elif currentArg == "--create-db":
 				create_db_flag = True
-			
-	except getopt.error as err:
-		print(str(err))
-	
 	return verbose, db, stops_threshold_line, nb_lines_max, create_db_flag
 	
 def import_data(
@@ -325,7 +323,7 @@ def reduce_roads(
 		reduced_roads_path = REDUCED_DATA_PATH / "reduced_roads.shp"
 	db_connector.con.execute(
 		"""
-			COPY (SELECT osm_id, code, name, maxspeed, geom, ST_Length_Spheroid(geom) AS length FROM ST_ReadSHP($input_file)
+			COPY (SELECT osm_id, code, name, maxspeed, geom, ST_Length_Spheroid(geom) AS length, oneway, fclass FROM ST_ReadSHP($input_file)
 			WHERE ST_Contains(ST_MakeEnvelope($left, $bottom, $right, $top), geom) AND
 			code <= $last_road_type_code AND maxspeed>0) TO $output_file
 			WITH (FORMAT gdal, DRIVER 'ESRI Shapefile', LAYER_CREATION_OPTIONS 'WRITE_BBOX=YES', SRS 'EPSG:4326');
