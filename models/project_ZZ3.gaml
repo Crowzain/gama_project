@@ -40,8 +40,7 @@ global {
 	
 
 	//graphs	
-	graph road_graph <- main_connected_component(as_edge_graph(shape_file_roads)) const:true;
-	graph road_network;
+	graph road_graph;
 	graph<stop,stop> bus_graph <-graph([]);
 	
 	//index map
@@ -52,6 +51,12 @@ global {
 		if not is_output_flag{
 			do write_stats;
 			is_output_flag <- true;
+		}
+	}
+	
+	reflex make_stops_spawn_passengers when: every(spawn_frequency) {
+		ask stop{
+			do call_passenger_factory;	
 		}
 	}
 	
@@ -174,7 +179,7 @@ global {
 			write select(QUERY);
         }
         */
-		road_network <- create_driving_graph();
+		road_graph <- create_driving_graph();
 		
 		create stop from:file_stops with:[stop_id::read ('stop_id'), location::point(read('geom'))];
 		
@@ -211,7 +216,7 @@ species building schedules: []{
 	}
 }
 
-species stop{
+species stop schedules: []{
 	rgb color <- #yellow const:true;
 	string stop_id;
 	bool activated<-false; // variable to only display used stops 
@@ -231,9 +236,6 @@ species stop{
 		if activated {
 			draw circle(10) color: color border: #black;	
 		}
-	}
-	reflex spawn when: every(spawn_frequency) {
-		do call_passenger_factory;
 	}
 	
 	action call_passenger_factory{
