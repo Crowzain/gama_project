@@ -13,8 +13,10 @@ global {
 	//files variables
 	file shape_file_buildings <- shape_file("../includes/reduced_data/reduced_buildings.shp") const:true;
 	file shape_file_roads <- shape_file("../includes/reduced_data/reduced_roads.shp") const:true;
+	file shape_file_intersections <- shape_file("../includes/reduced_data/reduced_intersections.shp") const:true;
 	file file_stops<-shape_file("../includes/reduced_data/reduced_stops.shp") const:true;
 	file file_lines<-csv_file("../includes/reduced_data/lines.txt", ",", string, true) const:true;
+	
 	geometry shape <- envelope(shape_file_roads);
 	
 	//parameters
@@ -38,7 +40,8 @@ global {
 	
 
 	//graphs	
-	graph road_graph <- as_edge_graph(shape_file_roads) const:true;
+	graph road_graph <- main_connected_component(as_edge_graph(shape_file_roads)) const:true;
+	graph road_network;
 	graph<stop,stop> bus_graph <-graph([]);
 	
 	//index map
@@ -114,6 +117,32 @@ global {
 		}
 	}
 	
+	action create_driving_graph{
+		do create_roads;
+		do create_intersections;
+		return as_driving_graph(road, intersection);	
+	}
+	
+	action create_roads{
+		create road from: shape_file_roads with:[
+			maxspeed::float(read('maxspeed')), oneway::read('oneway'), type::read('fclass')
+		]{
+			if oneway = "T"{
+				do reverse_direction(self);
+			}
+			if oneway = "B"{
+				do create_opposite_direction_road(self);
+			}
+		}
+	}
+	
+	action create_intersections{
+		create intersection from:shape_file_intersections with:[name::read('osm_id')]; 
+	}
+	
+	
+	
+	
 	/* 
 	//Database settings
 	map<string, string> MySQL <- [
@@ -127,8 +156,6 @@ global {
 	map <string, string>  SQLITE <- ['dbtype'::'sqlite', 'database'::'../includes/gama_project_sqlite.db'];
 	string QUERY <- "SELECT stop_id FROM stops;";
 	*/
-	
-	
 	
 	init {		
 		step <- 5#s;
@@ -147,10 +174,9 @@ global {
 			write select(QUERY);
         }
         */
-
-		create road from: shape_file_roads with:[maxspeed::float(read('maxspeed'))];
+		road_network <- create_driving_graph();
 		
-		create stop from:file_stops with:[stop_id::string(read ('stop_id')), location::point(read('geom'))];
+		create stop from:file_stops with:[stop_id::read ('stop_id'), location::point(read('geom'))];
 		
 		do fill_stop_index_map;
 
@@ -497,7 +523,7 @@ species passenger skills:[moving]{
 	
 	action request_neighborhood{
 		loop b over:(bus at_distance(eps)){
-			if is_valid_bus(b){
+			if (is_valid_bus(b)){
 				do get_on(b);
 				break;
 			}	
@@ -534,6 +560,38 @@ species passenger skills:[moving]{
 // should be improved to be used and to store vehicle on it for example
 species road  skills:[road_skill]{
 	rgb color <- #black ;
+	int direction_index <- 0;
+	string oneway;
+	string type;
+	init{
+		num_lanes<-1;
+	}
+	
+	aspect base {
+		draw shape color: color ;
+	}
+	
+	action create_opposite_direction_road(road r){
+		create road with:[
+			maxspeed::r.maxspeed, oneway::r.oneway, 
+			shape::polyline(reverse(shape.points)), 
+			direction_index::1, name::name, type::r.type
+		]{
+			self.linked_road <- r;
+			r.linked_road <- self;
+		}
+	}
+	
+	action reverse_direction(road r){
+		shape <- polyline(reverse(shape.points));
+	}
+}
+
+// should be improved to be used and to store vehicle on it for example
+species intersection  skills:[intersection_skill]{
+	rgb color <- #black ;
+	int num_lanes <-1;
+	string oneway;
 	aspect base {
 		draw shape color: color ;
 	}
