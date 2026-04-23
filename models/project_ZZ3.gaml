@@ -165,7 +165,9 @@ global {
 	init {		
 		step <- 5#s;
 		seed<-float(int_seed);
-		write seed;
+		if (seed != ceil(seed)){
+			seed <- 1.0;
+		}
 		if (buildings_mode){
 			create building from: shape_file_buildings;
 		}
