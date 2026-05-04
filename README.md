@@ -59,7 +59,7 @@ No known bug to fix
 This project is currently developped by Pierre B.
 
 ## 6. License
-This project is licensed under the **MIT License**.  
+This project is licensed under the **Apache License 2.0**.  
 See the [LICENSE](./LICENSE) file for full details.
 
-[![MIT License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Apache 2.0](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
