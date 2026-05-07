@@ -534,7 +534,7 @@ species passenger skills:[moving]{
 		}
 	}
 	
-	action is_valid_bus(bus b){
+	bool is_valid_bus(bus b){
 		stop next_s <- b.line.stops first_with (each.location distance_to next_stop_loc < eps);
 		stop cur_s  <- b.line.stops first_with (each.location distance_to location < eps);
 		if next_s != nil and cur_s != nil{
@@ -543,7 +543,7 @@ species passenger skills:[moving]{
 		return false;
 	}
 	
-	action is_right_direction(bus b, stop cur_s, stop next_s){
+	bool is_right_direction(bus b, stop cur_s, stop next_s){
 		int idx_cur  <- b.line.stops index_of cur_s;
 		int idx_next <- b.line.stops index_of next_s;
 		bool correct_direction <- (idx_next - idx_cur)*b.direction>0;
