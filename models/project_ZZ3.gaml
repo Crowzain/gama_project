@@ -187,14 +187,7 @@ global {
 		
 		do fill_stop_index_map;
 
-		create busLine from:file_lines with:[route_id::string (read ('name')), route_color::rgb([read ('r'), read ('g'), read ('b')])]{
-			
-			string file_name <- "../includes/reduced_data/"+self.route_id+".txt";
-			file file_line <- csv_file(file_name, ",", string, true);
-			
-			route_id <- file_line.attributes[0]; // get route_id stored into the header
-			do build_stops_list(file_line);
-		}
+		create busLine from:file_lines with:[route_id::string (read ('name')), route_color::rgb([read ('r'), read ('g'), read ('b')])];
 		
 		do filter_stops;
 		do initialize_buses(3);
@@ -274,6 +267,14 @@ species busLine schedules: []{
             path seg <- path_between(road_graph, node1, node2);
  			draw shape(seg) color: route_color width: 6;
         }
+    }
+    
+    init{
+    	string file_name <- "../includes/reduced_data/"+self.route_id+".txt";
+		file file_line <- csv_file(file_name, ",", string, true);
+		
+		route_id <- file_line.attributes[0]; // get route_id stored into the header
+		do build_stops_list(file_line);
     }
     
     action build_stops_list(file stops_file){
