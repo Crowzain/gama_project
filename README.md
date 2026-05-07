@@ -46,10 +46,9 @@ $> docker compose down
 > if you do not want persistant database, you can delete it by adding `-v` option.
 
 ## 3. Fix me
-No known bug to fix
+* [ ] driving graph not functional yet
 
 ## 4. To do and perspectives
-* [x] add more buses on lines
 * [ ] add random traffic
 * [ ] adjust bus speed (according to traffic and acceleration)
 * [ ] consider personal behavior
