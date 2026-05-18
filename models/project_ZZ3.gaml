@@ -13,7 +13,6 @@ global {
 	//files variables
 	file shape_file_buildings <- shape_file("../includes/reduced_data/reduced_buildings.shp") const:true;
 	file shape_file_roads <- shape_file("../includes/reduced_data/reduced_roads.shp") const:true;
-	file shape_file_intersections <- shape_file("../includes/reduced_data/reduced_intersections.shp") const:true;
 	file file_stops<-shape_file("../includes/reduced_data/reduced_stops.shp") const:true;
 	file file_lines<-csv_file("../includes/reduced_data/lines.txt", ",", string, true) const:true;
 	
@@ -27,7 +26,7 @@ global {
 	float eps <- 0.1 const:true;
 	float distance_from_building_tolerance <- 50.0 const:true;
 	int int_seed;
-	bool verbose_mode <- false const:true;
+	bool verbose_mode <- true const:true;
 	bool buildings_mode <- true const:true;
 	bool output_mode <- false const:false;
 	float T_max <- 6 #h const:true;
@@ -40,6 +39,7 @@ global {
 	
 
 	//graphs	
+	graph network_skeleton <- as_edge_graph(shape_file_roads);
 	graph road_graph;
 	graph<stop,stop> bus_graph <-graph([]);
 	
@@ -125,28 +125,47 @@ global {
 	action create_driving_graph{
 		do create_roads;
 		do create_intersections;
-		return as_driving_graph(road, intersection);	
+		do make_connections;
 	}
-	
+
 	action create_roads{
 		create road from: shape_file_roads with:[
-			maxspeed::float(read('maxspeed')), oneway::read('oneway'), type::read('fclass')
+			maxspeed::float(read('maxspeed')), oneway::bool('oneway')
 		]{
-			if oneway = "T"{
-				do reverse_direction(self);
+			if self.maxspeed=0.0{
+				maxspeed <- 10.0;
 			}
-			if oneway = "B"{
+			if oneway = false{
 				do create_opposite_direction_road(self);
 			}
 		}
 	}
-	
+
 	action create_intersections{
-		create intersection from:shape_file_intersections with:[name::read('osm_id')]; 
+		loop v over:network_skeleton.vertices{
+			create intersection with:[location::(v as point).location, color::#pink];
+		}
 	}
-	
-	
-	
+
+	action make_connections{
+
+		ask road{
+			intersection source <- closest_to(intersection, first(shape.points));
+			intersection target <- closest_to(intersection, last(shape.points));
+
+			if oneway = true{
+				intersection tmp <- source;
+				source <- target;
+				target <- tmp;
+			}
+
+
+			do connect_two_intersections(source, target);
+			
+		}
+		map edge_weights <- road as_map (each::each.shape.perimeter);
+		road_graph<-as_driving_graph(road, intersection) with_weights edge_weights;
+	}
 	
 	/* 
 	//Database settings
@@ -163,7 +182,7 @@ global {
 	*/
 	
 	init {		
-		step <- 5#s;
+		step <- 0.1#s;
 		seed<-float(int_seed);
 		if (seed != ceil(seed)){
 			seed <- 1.0;
@@ -181,9 +200,9 @@ global {
 			write select(QUERY);
         }
         */
-		road_graph <- create_driving_graph();
+		create stop from:file_stops with:[stop_id::read ('stop_id'), location::point(read('the_geom'))];
 		
-		create stop from:file_stops with:[stop_id::read ('stop_id'), location::point(read('geom'))];
+		do create_driving_graph;
 		
 		do fill_stop_index_map;
 
@@ -218,12 +237,11 @@ species stop schedules: []{
 	float passenger_arrival_rate;
 	
 	init{
-		
 		if length(building where (each.type="train_station") at_distance distance_from_building_tolerance)>0{
-			passenger_arrival_rate<-7.0;
+			passenger_arrival_rate<-0.07;
 		}
 		else{
-			passenger_arrival_rate<-1.0;	
+			passenger_arrival_rate<-0.01;	
 		}
 	}
 	
@@ -249,8 +267,6 @@ species stop schedules: []{
 			do update_next_stop_loc;
 		}
 	}
-	
-	
 }
 
 species busLine schedules: []{
@@ -320,7 +336,7 @@ species busLine schedules: []{
     }
 }
 
-species bus skills:[moving]{
+species bus skills:[driving]{
 	/* attributes */
 	// id attributes
 	string bus_id;
@@ -341,15 +357,21 @@ species bus skills:[moving]{
 	// miscellaneous attributes
 	float stop_time<-20#s;
 	
+	init{
+		vehicle_length <- 12#m;
+	}
 	
 	aspect base {
 		draw circle(20) color: line.route_color border: #black;
 	}
 	
+	
 	reflex move when: not at_stop{
-		speed<-30 #km/#h;
-		do goto(target:next_stop, on:road_graph, return_path:false);
-		if location distance_to next_stop < eps{
+		do drive;
+		if final_target=nil{
+			write string(self)+"void"+location;
+		}
+		if final_target!=nil and location distance_to final_target < eps{
 			at_stop <- true;
 		}
 	}
@@ -365,6 +387,8 @@ species bus skills:[moving]{
 		do update_direction;
 		next_stop_index <- next_stop_index + direction;
 		next_stop <- line.stops[next_stop_index];
+		final_target <- closest_to(intersection, next_stop);
+		do compute_path graph: road_graph target:final_target;
 	}
 	
 	action update_direction{
@@ -482,7 +506,7 @@ species passenger skills:[moving]{
 			if location distance_to next_stop_loc < eps{
 				way_index <- way_index + 1;
 				do update_next_stop_loc;
-				if current_bus.next_stop.location distance_to next_stop_loc>=eps{
+				if current_bus.final_target.location distance_to next_stop_loc>=eps{
 					do get_off;
 				}
 			}
@@ -562,12 +586,10 @@ species passenger skills:[moving]{
 	}
 }
 
-// should be improved to be used and to store vehicle on it for example
 species road  skills:[road_skill]{
 	rgb color <- #black ;
 	int direction_index <- 0;
-	string oneway;
-	string type;
+	bool oneway;
 	init{
 		num_lanes<-1;
 	}
@@ -578,27 +600,30 @@ species road  skills:[road_skill]{
 	
 	action create_opposite_direction_road(road r){
 		create road with:[
-			maxspeed::r.maxspeed, oneway::r.oneway, 
+			maxspeed::r.maxspeed, oneway::false, 
 			shape::polyline(reverse(shape.points)), 
-			direction_index::1, name::name, type::r.type
-		]{
+			direction_index::1, name::name
+		]{	
 			self.linked_road <- r;
 			r.linked_road <- self;
 		}
 	}
 	
-	action reverse_direction(road r){
-		shape <- polyline(reverse(shape.points));
+	action connect_two_intersections(intersection source, intersection target){
+		source_node <- source;
+		target_node <- target;
+		add self to: target.roads_in;
+		add self to: source.roads_out;
 	}
 }
 
-// should be improved to be used and to store vehicle on it for example
 species intersection  skills:[intersection_skill]{
-	rgb color <- #black ;
+	rgb color <- #purple ;
 	int num_lanes <-1;
-	string oneway;
+	string type;
+	
 	aspect base {
-		draw shape color: color ;
+		draw shape+2 color: color ;
 	}
 }
 
@@ -610,6 +635,7 @@ experiment road_traffic type: gui {
 
 			species building aspect: base refresh:false;
 			species road aspect: base refresh:false;
+			//species intersection aspect: base refresh:false;
 			
 			species passenger aspect: base;
 			species bus aspect:base;
