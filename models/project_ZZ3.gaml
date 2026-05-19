@@ -27,7 +27,6 @@ global {
 	float distance_from_building_tolerance <- 50.0 const:true;
 	int int_seed;
 	bool verbose_mode <- true const:true;
-	bool buildings_mode <- true const:true;
 	bool output_mode <- false const:false;
 	float T_max <- 6 #h const:true;
 	float spawn_frequency<-6.5#mn;
@@ -182,14 +181,14 @@ global {
 	*/
 	
 	init {		
+		
 		step <- 0.1#s;
 		seed<-float(int_seed);
 		if (seed != ceil(seed)){
 			seed <- 1.0;
 		}
-		if (buildings_mode){
+		
 			create building from: shape_file_buildings;
-		}
 		
 		/* 
 		create agtDB{
@@ -628,6 +627,28 @@ species intersection  skills:[intersection_skill]{
 }
 
 experiment road_traffic type: gui {
+	parameter "seed: " var: int_seed min: 1 max: 100 step:1;
+	parameter "passenger spawn frequency" var: spawn_frequency min: 100.0#s max: 2000.0#s step:50.0#s;
+	output {
+		display city_display type:3d {
+
+			species road aspect: base refresh:false;
+			//species intersection aspect: base refresh:false;
+			
+			species passenger aspect: base;
+			species bus aspect:base;
+			species busLine aspect: base refresh:false transparency:2/3;
+			species stop aspect: base refresh:false;
+		}
+		
+		monitor "Number of people agents" value: passengers_nb;
+		monitor "Average waiting time" value: mean(waiting_time_list)/300;
+		monitor "Average time to reach target" value: mean(time_to_reach_target_list)/300;
+	}
+}
+
+
+experiment road_traffic_with_building type: gui {
 	parameter "seed: " var: int_seed min: 1 max: 100 step:1;
 	parameter "passenger spawn frequency" var: spawn_frequency min: 100.0#s max: 2000.0#s step:50.0#s;
 	output {
