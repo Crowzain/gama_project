@@ -23,8 +23,8 @@ global {
 	int passengers_nb <- initial_passengers_nb;
 	int min_capacity <- 5 const:true;
 	int max_capacity <- 30 const:true;
-	float eps <- 0.1 const:true;
-	float distance_from_building_tolerance <- 50.0 const:true;
+	float eps <- 50.0#m const:true;
+	float distance_from_building_tolerance <- 200.0#m const:true;
 	int int_seed;
 	bool verbose_mode <- true const:true;
 	bool output_mode <- false const:false;
@@ -199,7 +199,7 @@ global {
 			write select(QUERY);
         }
         */
-		create stop from:file_stops with:[stop_id::read ('stop_id'), location::point(read('the_geom'))];
+		create stop from:file_stops with:[stop_id::read ('stop_id'), location::point(read('geometry')), color::#blue];
 		
 		do create_driving_graph;
 		
@@ -368,9 +368,6 @@ species bus skills:[driving]{
 	reflex move when: not at_stop{
 		do drive;
 		if final_target=nil{
-			write string(self)+"void"+location;
-		}
-		if final_target!=nil and location distance_to final_target < eps{
 			at_stop <- true;
 		}
 	}

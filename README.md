@@ -46,7 +46,7 @@ $> docker compose down
 > if you do not want persistant database, you can delete it by adding `-v` option.
 
 ## 3. Fix me
-* [ ] issue related to passengers management by buses: passengers do not always get on/off buses
+* [ ] stops are inserted into shapefiles but an improvements are needed to make the insertion smoother
 
 ## 4. To do and perspectives
 * [ ] add random traffic
