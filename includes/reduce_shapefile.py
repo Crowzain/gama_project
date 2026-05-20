@@ -21,13 +21,12 @@ def reduce_shapefiles(
 	db_connector.con.execute("INSTALL spatial;")
 	db_connector.con.execute("LOAD spatial;")
 	reduce_stops(db_connector, box)
-	reduce_network(db_connector, box)
+	reduce_network(box)
 	reduce_buildings(db_connector, box)
 
 	return None
 
 def reduce_network(
-		db_connector:DBConnector,
 		box:box,
 		reduced_roads_path:Path|str|None=None,
 		reduced_intersections_path:Path|str|None=None,
@@ -37,8 +36,8 @@ def reduce_network(
 	intersection_gdf.index = intersection_gdf.index.astype("str")
 
 	export_gdfs_to_shapefiles(intersection_gdf, road_gdf, reduced_roads_path, reduced_intersections_path)
-	#intersection_gdf, road_gdf = add_stops_to_gdfs(db_connector, intersection_gdf, road_gdf)
-	#export_gdfs_to_shapefiles(intersection_gdf, road_gdf, reduced_roads_path, reduced_intersections_path)
+	intersection_gdf, road_gdf = add_stops_to_gdfs(intersection_gdf, road_gdf)
+	export_gdfs_to_shapefiles(intersection_gdf, road_gdf, reduced_roads_path, reduced_intersections_path)
 
 	return None
 
@@ -55,7 +54,6 @@ def create_gdfs(box:box)->tuple[gpd.GeoDataFrame, gpd.GeoDataFrame]:
 	return osmnx.convert.graph_to_gdfs(graph)
 
 def add_stops_to_gdfs(
-		db_connector:DBConnector,
 		intersection_gdf:gpd.GeoDataFrame,
 		road_gdf:gpd.GeoDataFrame,
 		reduced_stops_path:Path|str|None=None,
@@ -71,7 +69,7 @@ def add_stops_to_gdfs(
 
 	for stop in stops_gdf.itertuples():
 		intersection_gdf = insert_stop_into_intersection_gdf(stop, intersection_gdf)
-		insert_detour_via_stop_into_road_gdf(db_connector, stop, road_gdf, rows_to_add, indices_to_drop)
+		insert_detour_via_stop_into_road_gdf(stop, road_gdf, rows_to_add, indices_to_drop)
 	
 	road_gdf = road_gdf.drop(index=indices_to_drop)
 	gdf_with_inserted_row = gpd.GeoDataFrame(rows_to_add, crs=4326)
@@ -97,13 +95,12 @@ def insert_stop_into_intersection_gdf(
 	return intersection_gdf
 
 def insert_detour_via_stop_into_road_gdf(
-		db_connector:DBConnector,
 		stop,
 		road_gdf:gpd.GeoDataFrame,
 		rows_to_add:list[gpd.GeoSeries],
 		indices_to_drop:list[tuple[int, int, int]]
 )->None:
-	edges_list = get_associated_edges_with_stop(db_connector, stop)
+	edges_list = get_associated_edges_with_stop(stop, road_gdf)
 	if len(edges_list)>0:
 		split_linestrings_list = split_edges(stop, edges_list, road_gdf)
 
@@ -112,10 +109,12 @@ def insert_detour_via_stop_into_road_gdf(
 
 			a = original.copy()
 			a["geometry"] = linestring[0]
+			a["length"] = linestring[0].length
 			a.name = (a.name[0], stop.stop_id, a.name[2])
 			
 			b = original.copy()
 			b["geometry"] = linestring[1]
+			b["length"] = linestring[1].length
 			b.name = (stop.stop_id, b.name[1], b.name[2])
 			
 			rows_to_add.append(a)
@@ -124,24 +123,20 @@ def insert_detour_via_stop_into_road_gdf(
 	return None
 
 def get_associated_edges_with_stop(
-		db_connector:DBConnector,
 		stop,
-		reduced_roads_path:Path|str|None=None,
-		tolerance:float=0.01,
-		length:float=5.0
+		road_gdf:gpd.GeoDataFrame,
+		distance_from_linestring:float=0.001
 	)->list[tuple[int,int, int]]:
 	
-	if reduced_roads_path is None:
-		reduced_roads_path = REDUCED_DATA_PATH / "reduced_roads.shp"
+	stop_point = stop.geometry
+
+	mask = road_gdf.geometry.dwithin(stop_point, distance_from_linestring)
+	candidates = road_gdf[mask].copy()
+	candidates["dist"] = candidates.geometry.distance(stop_point)
+	candidates = candidates.sort_values("dist")
 	
-	list_of_edges_touching_stop = db_connector.con.execute(
-			"""
-				SELECT u,v, key FROM ST_ReadSHP($road_file)
-				WHERE ST_DWithin_GEOS(geom, ST_Point($x, $y), $tolerance) AND length>$length
-				ORDER BY ST_Distance(ST_Point($x, $y), geom)
-				LIMIT 2;
-			""", parameters={"x":stop.geometry.x, "y":stop.geometry.y, "road_file": str(reduced_roads_path), "tolerance": tolerance, "length": length}
-		).fetchall()
+	list_of_edges_touching_stop = list(candidates.index[:2])
+
 	edges_touching_stop_number = len(list_of_edges_touching_stop)
 	if edges_touching_stop_number>0:
 		u_first_closest = list_of_edges_touching_stop[0][0]
@@ -155,47 +150,51 @@ def get_associated_edges_with_stop(
 
 def split_edges(
 	stop,
-	edges_list:list[tuple[int,int]],
-	road_gdf:gpd.GeoDataFrame,
-	tolerance:float=0.0001
+	edges_list:list[tuple[int, int, int]],
+	road_gdf:gpd.GeoDataFrame
 )->list[tuple[shapely.LineString, shapely.LineString]]:
 	split_linestrings_list = []
 	for edge in edges_list:
 		edge_geometry = road_gdf.loc[edge].geometry
-		snapped_edge_geometry = shapely.snap(edge_geometry, stop.geometry, tolerance)
-		split_linestrings_list.append(split_linestring(edge_geometry, snapped_edge_geometry))
+		split_linestring_pair = split_linestring(stop, edge_geometry)
+		if split_linestring_pair is not None:
+			split_linestrings_list.append(split_linestring_pair)
 	return split_linestrings_list
 
 def split_linestring(
-	original_linestring:shapely.LineString,
-	snapped_linestring:shapely.LineString,
-)->tuple[shapely.LineString, shapely.LineString]:
+		stop,
+		original_linestring:shapely.LineString,
+		distance_from_linestring:float=0.001
+)->tuple[shapely.LineString, shapely.LineString]|None:
 	
-	original_coords_list = original_linestring.coords[:]
-	snapped_coords_list = snapped_linestring.coords[:]
-	if len(original_coords_list) == 2:
-		return split_segment(original_coords_list, snapped_coords_list)
+	if len(original_linestring.coords) == 2:
+		return split_segment(stop, original_linestring)
 	else:
-		return split_curve(original_coords_list, snapped_coords_list)
+		return split_curve(stop, original_linestring, distance_from_linestring)
 
 def split_segment(
-		original_coords_list:list[tuple[float, float]],
-		snapped_coords_list:list[tuple[float, float]]
+		stop,
+		original_linestring:shapely.LineString,
 )->tuple[shapely.LineString, shapely.LineString]:
-	snapped_coords_index = 1 if original_coords_list[0] == snapped_coords_list[0] else 0
-	first_linestring = shapely.LineString([original_coords_list[0], snapped_coords_list[snapped_coords_index]])
-	second_linestring = shapely.LineString([snapped_coords_list[snapped_coords_index], original_coords_list[1]])
+	first_linestring = shapely.LineString([original_linestring.coords[0], stop.geometry])
+	second_linestring = shapely.LineString([stop.geometry, original_linestring.coords[1]])
 	return first_linestring, second_linestring
 
 def split_curve(
-	original_coords_list:list[tuple[float, float]],
-	snapped_coords_list:list[tuple[float, float]]
+		stop,
+		original_linestring:shapely.LineString,
+		distance_from_linestring:float=0.001
 )->tuple[shapely.LineString, shapely.LineString]:
-	for original_coords, modified_coords in zip(original_coords_list, snapped_coords_list):
-		if original_coords != modified_coords:
-			first_linestring, second_linestring = shapely.ops.split(shapely.LineString(original_coords_list), shapely.Point(original_coords)).geoms
-			second_linestring = shapely.LineString([modified_coords]+second_linestring.coords)
-			return first_linestring, second_linestring
+	snapped_edge_geometry = shapely.snap(original_linestring, stop.geometry, distance_from_linestring)
+	i = 0
+	geometry_list_length = len(snapped_edge_geometry.coords)
+	stop_coord = (stop.geometry.x, stop.geometry.y)
+
+	while i < geometry_list_length-1 and snapped_edge_geometry.coords[i] != stop_coord:
+		i+=1
+	first_linestring = shapely.LineString(snapped_edge_geometry.coords[:i+1])
+	second_linestring = shapely.LineString(snapped_edge_geometry.coords[i:])
+	return first_linestring, second_linestring
 
 def export_gdfs_to_shapefiles(
 		intersection_gdf:gpd.GeoDataFrame,
@@ -253,24 +252,75 @@ def reduce_stops(
 		db_connector:DBConnector,
 		box:box,
 		reduced_stops_path:Path|str|None=None,
+		stops_threshold_line:int=5,
+		nb_lines_max:int=100,
 )->None:
 	if reduced_stops_path is None:
 		clear_files(REDUCED_DATA_PATH, "*reduced_stops*")
 		reduced_stops_path = REDUCED_DATA_PATH / "reduced_stops.shp"
-		
-	db_connector.con.execute(
-		"""
-			COPY (SELECT stop_id, ST_Point2D(stop_lon, stop_lat) AS geom FROM stops
-			WHERE stop_lat BETWEEN $bottom AND $top
-			AND stop_lon BETWEEN $left AND $right) TO $output_file
-			WITH (FORMAT gdal, DRIVER 'ESRI Shapefile', LAYER_CREATION_OPTIONS 'WRITE_BBOX=YES', SRS 'EPSG:4326');
+	db_connector.con.execute("""
+		COPY (
+			WITH 
+				filtered_stops AS (
+					SELECT stop_id, stop_lat, stop_lon
+					FROM stops
+					WHERE stop_lat BETWEEN $bottom AND $top
+					AND stop_lon BETWEEN $left AND $right
+				),
+			
+				candidate_services AS (
+					SELECT trip_id FROM trips
+					JOIN calendar USING(service_id)
+					WHERE MONDAY AND TUESDAY AND WEDNESDAY AND THURSDAY AND FRIDAY
+				),
+				
+				candidate_routes AS (
+					SELECT route_id, route_color FROM routes
+					WHERE route_type=3
+				),
+				
+				filtered_trips AS (
+					SELECT DISTINCT ON(trip_id) trip_id, route_id, route_color FROM trips
+					JOIN candidate_services USING(trip_id)
+					JOIN candidate_routes USING(route_id)
+				),
+				
+				candidate_stops AS (
+					SELECT stop_id, trip_id, stop_sequence, stop_lon, stop_lat FROM stop_times
+					JOIN filtered_stops USING(stop_id)
+					WHERE CAST (departure_time[1:2] AS INT)>=7 AND CAST(arrival_time[1:2] AS INT)<=18
+				),
+
+				selected_lines AS (
+					SELECT DISTINCT ON(route_id) route_id, list(stop_id) AS stop_ids FROM candidate_stops
+					JOIN filtered_trips USING (trip_id)
+					GROUP BY (trip_id, route_id)
+					HAVING COUNT(stop_id)>$stops_threshold_line
+					ORDER BY COUNT(stop_id) DESC
+					LIMIT $nb_lines
+				),
+				
+				unnested AS (
+				SELECT DISTINCT unnest(stop_ids) AS stop_id
+				FROM selected_lines
+				)
+				
+				SELECT
+					unnested.stop_id,
+					ST_Point(fs.stop_lon, fs.stop_lat) AS geometry
+				FROM unnested
+				JOIN filtered_stops fs USING (stop_id)
+			) TO $output_file
+		WITH (FORMAT gdal, DRIVER 'ESRI Shapefile', LAYER_CREATION_OPTIONS 'WRITE_BBOX=YES', SRS 'EPSG:4326');
 		""",
 		{
 			"output_file": str(reduced_stops_path),
 			"left": box.left, 
 			"bottom": box.bottom, 
 			"right": box.right, 
-			"top": box.top
+			"top": box.top,
+			"stops_threshold_line": stops_threshold_line,
+			"nb_lines": nb_lines_max
 		}
 	)
 	return None

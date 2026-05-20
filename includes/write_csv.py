@@ -56,6 +56,7 @@ def query_bus_stop_in_box(
 		JOIN filtered_trips USING (trip_id)
 		GROUP BY (trip_id, route_id)
 		HAVING COUNT(stop_id)>$stops_threshold_line
+		ORDER BY COUNT(stop_id) DESC
 		LIMIT $nb_lines;
 		""",
 		{
