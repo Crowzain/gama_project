@@ -256,13 +256,7 @@ species stop schedules: []{
 			add (length(passenger where each.on_board)/passengers_nb) to: passengers_ratio_list;
 		}		
 		
-		create passenger number:n_new_passengers{
-			source <- myself;
-			location<-source.location;
-			
-			do find_valid_target;
-			do update_next_stop_loc;
-		}
+		create passenger number:n_new_passengers with:[source::self, location::self.location];
 	}
 }
 
@@ -445,6 +439,10 @@ species passenger skills:[moving]{
 	
 	aspect base {
 		draw square(50) color: color border: #black;
+	}
+	init{
+		do find_valid_target;
+		do update_next_stop_loc;
 	}
 	
 	reflex update_metrics{
