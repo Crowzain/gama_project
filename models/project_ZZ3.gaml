@@ -527,7 +527,9 @@ species passenger skills:[moving]{
 	}
 		
 	action get_off{
-		remove item:self from:current_bus.passengers;
+		ask current_bus{
+			do get_off(myself);
+		}
 		
 		current_bus<-nil;
 		on_board <- false;
