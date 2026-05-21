@@ -95,8 +95,7 @@ global {
 	}
 	
 	action create_randomly_one_bus_on_line(busLine l, int n_buses){
-		create bus{
-			line <- l;
+		create bus with:[line:l]{
 			do set_random_initial_state;
 			do update_next_stop;
 		}
@@ -106,8 +105,7 @@ global {
 		int line_length <- length(l.stops);
 		int gap<-max(1, line_length-1 div n_buses);
 		loop i from:0 to:line_length-1 step:gap {
-			create bus{
-				line <- l;
+			create bus with:[line:l]{
 				do set_initial_state(i);
 				do update_next_stop;
 			}
@@ -339,7 +337,7 @@ species bus skills:[driving]{
 	/* attributes */
 	// id attributes
 	string bus_id;
-	busLine line;
+	busLine line const:true;
 	
 	// routing attributes
 	int next_stop_index;
