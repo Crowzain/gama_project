@@ -16,7 +16,7 @@ global {
 	file file_stops<-shape_file("../includes/reduced_data/reduced_stops.shp") const:true;
 	file file_lines<-csv_file("../includes/reduced_data/lines.txt", ",", string, true) const:true;
 	
-	geometry shape <- envelope(shape_file_roads);
+	geometry shape <- envelope(shape_file_roads) const:true;
 	
 	//parameters
 	int initial_passengers_nb <- 10 const:true;
@@ -95,7 +95,7 @@ global {
 	}
 	
 	action create_randomly_one_bus_on_line(busLine l, int n_buses){
-		create bus with:[line:l]{
+		create bus with:[line:l, color:l.color]{
 			do set_random_initial_state;
 			do update_next_stop;
 		}
@@ -105,7 +105,7 @@ global {
 		int line_length <- length(l.stops);
 		int gap<-max(1, line_length-1 div n_buses);
 		loop i from:0 to:line_length-1 step:gap {
-			create bus with:[line:l]{
+			create bus with:[line:l, color:l.color]{
 				do set_initial_state(i);
 				do update_next_stop;
 			}
@@ -140,7 +140,7 @@ global {
 
 	action create_intersections{
 		loop v over:network_skeleton.vertices{
-			create intersection with:[location::(v as point).location, color::#pink];
+			create intersection with:[location::(v as point).location];
 		}
 	}
 
@@ -203,7 +203,7 @@ global {
 		
 		do fill_stop_index_map;
 
-		create busLine from:file_lines with:[route_id::string (read ('name')), route_color::rgb([read ('r'), read ('g'), read ('b')])];
+		create busLine from:file_lines with:[route_id::string(read ('name')), color::rgb([read ('r'), read ('g'), read ('b')])];
 		
 		do filter_stops;
 		do initialize_buses(3);
@@ -219,17 +219,21 @@ species agtDB parent: AgentDB {}
 
 species building schedules: []{
 	
-	string type const:true;
-
+	geometry shape const:true;
 	rgb color <- #grey const:true;
+	
+	string type const:true;
 	aspect base {
 		draw shape color: color ;
 	}
 }
 
 species stop schedules: []{
+	
+	geometry shape <-circle(10) const:true;
 	rgb color <- #yellow const:true;
-	string stop_id;
+	
+	string stop_id const:true;
 	bool activated<-false; // variable to only display used stops 
 	float passenger_arrival_rate;
 	
@@ -244,7 +248,7 @@ species stop schedules: []{
 	
 	aspect base {
 		if activated {
-			draw circle(10) color: color border: #black;	
+			draw shape color: color border: #black;	
 		}
 	}
 	
@@ -261,18 +265,20 @@ species stop schedules: []{
 }
 
 species busLine schedules: []{
-	string route_id;
+    
+    rgb color const:true;
+    
+	string route_id const:true;
     list<stop> stops <-nil ;
-    rgb route_color;
 
     aspect base {
     	point node1;
     	point node2;
-    	loop i from: 0 to:length(stops) {
+    	loop i from: 0 to:length(stops)-1 {
     		node1 <- stops[i].location;
     		node2 <- stops[i+1].location;          
             path seg <- path_between(road_graph, node1, node2);
- 			draw shape(seg) color: route_color width: 6;
+ 			draw shape(seg) color: color width: 6;
         }
     }
     
@@ -280,7 +286,6 @@ species busLine schedules: []{
     	string file_name <- "../includes/reduced_data/"+self.route_id+".txt";
 		file file_line <- csv_file(file_name, ",", string, true);
 		
-		route_id <- file_line.attributes[0]; // get route_id stored into the header
 		do build_stops_list(file_line);
     }
     
@@ -328,9 +333,11 @@ species busLine schedules: []{
 }
 
 species bus skills:[driving]{
-	/* attributes */
+
+	rgb color const:true;
+	
 	// id attributes
-	string bus_id;
+	string bus_id const:true;
 	busLine line const:true;
 	
 	// routing attributes
@@ -354,7 +361,7 @@ species bus skills:[driving]{
 	}
 	
 	aspect base {
-		draw circle(20) color: line.route_color border: #black;
+		draw circle(20) color: color border: #black;
 	}
 	
 	
@@ -418,9 +425,8 @@ species bus skills:[driving]{
 }
 
 species passenger skills:[moving]{
-	/* attributes */
-	
-	rgb color <- #orange ;
+
+	rgb color <- #orange among:[#orange, #green];
 	
 	//routing
 	stop source;
@@ -453,8 +459,6 @@ species passenger skills:[moving]{
 		}
 	}
 	
-	
-	
 	reflex move when: on_board{
 		
 		location <- current_bus.location;
@@ -471,7 +475,6 @@ species passenger skills:[moving]{
 			updated<-false;
 		}
 	}
-	
 	
 	action reach_target{
 		
@@ -530,7 +533,6 @@ species passenger skills:[moving]{
 		on_board <- false;
 		color <- #orange;
 	}
-	
 
 	reflex wait when: not on_board{
 		if location distance_to target.location<eps{
@@ -578,22 +580,20 @@ species passenger skills:[moving]{
 }
 
 species road  skills:[road_skill]{
-	rgb color <- #black ;
-	int direction_index <- 0;
-	bool oneway;
-	init{
-		num_lanes<-1;
-	}
+	
+	rgb color <- #black const:true;
+	
+	int num_lanes<-1 const:true;
+	bool oneway const:true;
 	
 	aspect base {
-		draw shape color: color ;
+		draw shape color: color;
 	}
 	
 	action create_opposite_direction_road(road r){
 		create road with:[
 			maxspeed::r.maxspeed, oneway::false, 
-			shape::polyline(reverse(shape.points)), 
-			direction_index::1, name::name
+			shape::polyline(reverse(shape.points)), name::name
 		]{	
 			self.linked_road <- r;
 			r.linked_road <- self;
@@ -608,10 +608,11 @@ species road  skills:[road_skill]{
 	}
 }
 
-species intersection  skills:[intersection_skill]{
-	rgb color <- #purple ;
-	int num_lanes <-1;
-	string type;
+species intersection  skills:[intersection_skill] {
+	
+	rgb color <- #pink const:true;
+	
+	string type const:true;
 	
 	aspect base {
 		draw shape+2 color: color ;
