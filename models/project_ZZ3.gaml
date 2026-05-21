@@ -27,7 +27,7 @@ global {
 	float distance_from_building_tolerance <- 200.0#m const:true;
 	int int_seed;
 	bool verbose_mode <- false const:true;
-	bool output_mode <- false const:false;
+	bool batch_mode <- false const:false;
 	float T_max <- 6 #h const:true;
 	float spawn_frequency<-6.5#mn;
 	bool is_output_flag <- false;
@@ -45,11 +45,15 @@ global {
 	//index map
 	map<string,stop> stop_index <- [];
 	
-	reflex stop_simulation when: time > T_max {
-		do pause;
-		if not is_output_flag{
-			do write_stats;
-			is_output_flag <- true;
+	reflex stop_simulation when: time >= T_max {
+		if batch_mode{
+			if not is_output_flag{
+				do write_stats;
+				is_output_flag <- true;	
+			}
+		}
+		else{
+			do pause;
 		}
 	}
 	
@@ -60,10 +64,22 @@ global {
 	}
 	
 	action write_stats{
-		save [seed, quantile(waiting_time_list, 0.25), median(waiting_time_list), quantile(waiting_time_list, 0.75)]
+		
+		waiting_time_list <- waiting_time_list sort_by each;
+		time_to_reach_target_list <- time_to_reach_target_list sort_by each;
+		
+		float Q25 <- quantile(waiting_time_list, 0.25);
+		float Q50 <- median(waiting_time_list);
+		float Q75 <- quantile(waiting_time_list, 0.75);
+		
+		save [seed, Q25, Q50, Q75]
 		to: "../results/save_wt"+"f_"+ spawn_frequency+ ".csv" format: "csv" rewrite:false;
 		
-		save [seed, quantile(time_to_reach_target_list, 0.25), median(time_to_reach_target_list), quantile(time_to_reach_target_list, 0.75)]
+		Q25 <- quantile(time_to_reach_target_list, 0.25);
+		Q50 <- median(time_to_reach_target_list);
+		Q75 <- quantile(time_to_reach_target_list, 0.75);
+		
+		save [seed, Q25, Q50, Q75]
 		to: "../results/save_reach_target"+"f_"+ spawn_frequency+ ".csv" format: "csv" rewrite:false;
 		
 		save [seed, passengers_ratio_list]
@@ -181,6 +197,8 @@ global {
 	init {		
 		
 		step <- 5#s;
+		rng <- "java";
+		
 		seed<-float(int_seed);
 		if (seed != ceil(seed)){
 			seed <- 1.0;
@@ -256,7 +274,7 @@ species stop schedules: []{
 		int n_new_passengers <- poisson(passenger_arrival_rate);
 		passengers_nb<-passengers_nb+n_new_passengers;
 		
-		if (output_mode and passengers_nb>0){
+		if (batch_mode and passengers_nb>0){
 			add (length(passenger where each.on_board)/passengers_nb) to: passengers_ratio_list;
 		}		
 		
@@ -483,7 +501,7 @@ species passenger skills:[moving]{
 				do get_off(myself);
 			}
 		}
-		if (output_mode){
+		if (batch_mode){
 			add waiting_time to: waiting_time_list ;
 			add time_to_reach_target to: time_to_reach_target_list;
 		}
@@ -636,13 +654,11 @@ experiment road_traffic type: gui {
 		}
 		
 		monitor "Number of people agents" value: passengers_nb;
-		monitor "Average waiting time" value: mean(waiting_time_list)/300;
-		monitor "Average time to reach target" value: mean(time_to_reach_target_list)/300;
 	}
 }
 
 
-experiment road_traffic_with_building type: gui {
+experiment road_traffic_with_building type: gui{
 	parameter "seed: " var: int_seed min: 1 max: 100 step:1;
 	parameter "passenger spawn frequency" var: spawn_frequency min: 100.0#s max: 2000.0#s step:50.0#s;
 	output {
@@ -658,7 +674,11 @@ experiment road_traffic_with_building type: gui {
 		}
 		
 		monitor "Number of people agents" value: passengers_nb;
-		monitor "Average waiting time" value: mean(waiting_time_list)/300;
-		monitor "Average time to reach target" value: mean(time_to_reach_target_list)/300;
 	}
+}
+
+
+experiment batch_experiments type: batch repeat: 1 keep_seed: true until: (is_output_flag){
+    parameter 'Seed:' var: int_seed min:1 max:10 step:1 init: 1;
+    parameter 'Batch mode' var: batch_mode init:true among:[true];
 }
