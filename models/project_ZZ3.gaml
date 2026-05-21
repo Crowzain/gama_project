@@ -26,7 +26,7 @@ global {
 	float eps <- 50.0#m const:true;
 	float distance_from_building_tolerance <- 200.0#m const:true;
 	int int_seed;
-	bool verbose_mode <- true const:true;
+	bool verbose_mode <- false const:true;
 	bool output_mode <- false const:false;
 	float T_max <- 6 #h const:true;
 	float spawn_frequency<-6.5#mn;
@@ -180,13 +180,13 @@ global {
 	
 	init {		
 		
-		step <- 0.1#s;
+		step <- 5#s;
 		seed<-float(int_seed);
 		if (seed != ceil(seed)){
 			seed <- 1.0;
 		}
 		
-			create building from: shape_file_buildings;
+		create building from: shape_file_buildings;
 		
 		/* 
 		create agtDB{
@@ -197,7 +197,7 @@ global {
 			write select(QUERY);
         }
         */
-		create stop from:file_stops with:[stop_id::read ('stop_id'), location::point(read('geometry')), color::#blue];
+		create stop from:file_stops with:[stop_id::read ('stop_id'), location::point(read('geometry'))];
 		
 		do create_driving_graph;
 		
@@ -235,10 +235,10 @@ species stop schedules: []{
 	
 	init{
 		if length(building where (each.type="train_station") at_distance distance_from_building_tolerance)>0{
-			passenger_arrival_rate<-0.07;
+			passenger_arrival_rate<-0.7;
 		}
 		else{
-			passenger_arrival_rate<-0.01;	
+			passenger_arrival_rate<-0.1;	
 		}
 	}
 	
@@ -350,6 +350,7 @@ species bus skills:[driving]{
 	
 	init{
 		vehicle_length <- 12#m;
+		max_speed <- 70 #km/#h;
 	}
 	
 	aspect base {
@@ -494,13 +495,11 @@ species passenger skills:[moving]{
 	}
 	
 	action update_next_stop{
-		if not updated{
-			if location distance_to next_stop_loc < eps{
-				way_index <- way_index + 1;
-				do update_next_stop_loc;
-				if current_bus.final_target.location distance_to next_stop_loc>=eps{
-					do get_off;
-				}
+		if not updated and location distance_to next_stop_loc < eps{
+			way_index <- way_index + 1;
+			do update_next_stop_loc;
+			if current_bus.final_target.location distance_to next_stop_loc>=eps{
+				do get_off;
 			}
 		}
 	}
@@ -626,12 +625,11 @@ experiment road_traffic type: gui {
 		display city_display type:3d {
 
 			species road aspect: base refresh:false;
-			//species intersection aspect: base refresh:false;
 			
 			species passenger aspect: base;
 			species bus aspect:base;
 			species busLine aspect: base refresh:false transparency:2/3;
-			species stop aspect: base refresh:false;
+			species stop aspect: base refresh:false transparency:2/3;
 		}
 		
 		monitor "Number of people agents" value: passengers_nb;
@@ -649,12 +647,11 @@ experiment road_traffic_with_building type: gui {
 
 			species building aspect: base refresh:false;
 			species road aspect: base refresh:false;
-			//species intersection aspect: base refresh:false;
 			
 			species passenger aspect: base;
 			species bus aspect:base;
 			species busLine aspect: base refresh:false transparency:2/3;
-			species stop aspect: base refresh:false;
+			species stop aspect: base refresh:false transparency:2/3;
 		}
 		
 		monitor "Number of people agents" value: passengers_nb;
