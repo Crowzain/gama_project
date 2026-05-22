@@ -54,5 +54,5 @@ species vehicle_base virtual:true skills:[driving]{
 	init{
 		right_side_driving <- true;
 		proba_respect_priorities <- 0.75;
-	}	
+	}
 }

@@ -34,6 +34,10 @@ global {
 	float spawn_frequency<-6.5#mn;
 	bool is_output_flag <- false;
 	
+	int motorbikes_nb <- 100;
+	int cars_nb <- 200;
+	int buses_nb_per_line <- 3;
+	
 	list<float> waiting_time_list <-[];
 	list<float> time_to_reach_target_list <-[];
 	list<float> passengers_ratio_list <-[];
@@ -147,9 +151,6 @@ global {
 		create road from: shape_file_roads with:[
 			maxspeed::float(read('maxspeed')), oneway::bool('oneway')
 		]{
-			if self.maxspeed=0.0{
-				maxspeed <- 10.0;
-			}
 			if oneway = false{
 				do create_opposite_direction_road(self);
 			}
@@ -226,10 +227,13 @@ global {
 		create busLine from:file_lines with:[route_id::string(read ('name')), color::rgb([read ('r'), read ('g'), read ('b')])];
 		
 		do filter_stops;
-		do initialize_buses(3);
+		do initialize_buses(buses_nb_per_line);
 		ask stop{
 			do call_passenger_factory;
 		}
+		
+		create motorbike number:motorbikes_nb;
+		create car number:cars_nb;
 	}
 }
 
@@ -384,7 +388,7 @@ species bus parent:vehicle_base{
 	}
 	
 	aspect base {
-		draw circle(20) color: color border: #black;
+		draw circle(15) color: color border: #black;
 	}
 	
 	
@@ -447,6 +451,52 @@ species bus parent:vehicle_base{
 	}
 }
 
+species motorbike parent:vehicle_base{
+	
+	rgb color <- #red const:true;
+	
+	init{
+		max_acceleration <- 2#m/#s/#s;
+		vehicle_length <- 1.89#m;
+		max_speed <- 70 #km/#h;
+		num_lanes_occupied <- 1;
+		location <- any(road_graph.vertices);
+	}
+	
+	aspect base {
+		draw circle(5) color: color border: #black;
+	}
+	
+	reflex move{
+		do drive_random graph:road_graph;		
+	}
+}
+
+species car parent:vehicle_base{
+	
+	rgb color <- #darkcyan const:true;
+	
+	// example Clio V
+	init{
+		max_acceleration <- 1.62#m/#s/#s;
+		vehicle_length <- 4.05#m;
+		max_speed <- 160 #km/#h;
+		num_lanes_occupied <- 2;
+		location <- any(road_graph.vertices);
+	}
+	
+	aspect base {
+		draw circle(10) color: color border: #black;
+	}
+	
+	reflex move{
+		do drive_random graph:road_graph;
+		//if current_road.target_node{
+			
+		//}
+	}
+}
+
 species passenger skills:[moving]{
 
 	rgb color <- #orange among:[#orange, #green];
@@ -468,7 +518,7 @@ species passenger skills:[moving]{
 	
 	
 	aspect base {
-		draw square(50) color: color border: #black;
+		draw square(30) color: color border: #black;
 	}
 	init{
 		do find_valid_target;
@@ -607,6 +657,9 @@ species passenger skills:[moving]{
 experiment road_traffic type: gui {
 	parameter "seed: " var: int_seed min: 1 max: 100 step:1;
 	parameter "passenger spawn frequency" var: spawn_frequency min: 100.0#s max: 2000.0#s step:50.0#s;
+	parameter "bus number per line" var: buses_nb_per_line min:1 max:5 step:1;
+	parameter "cars number" var: cars_nb min:0 max:20 step:1;
+	parameter "motorbikes number" var: motorbikes_nb min:0 max:50 step:1;
 	output {
 		display city_display type:3d {
 
@@ -614,6 +667,8 @@ experiment road_traffic type: gui {
 			
 			species passenger aspect: base;
 			species bus aspect:base;
+			species motorbike aspect:base;
+			species car aspect:base;
 			species busLine aspect: base refresh:false transparency:2/3;
 			species stop aspect: base refresh:false transparency:2/3;
 		}
@@ -626,6 +681,9 @@ experiment road_traffic type: gui {
 experiment road_traffic_with_building type: gui{
 	parameter "seed: " var: int_seed min: 1 max: 100 step:1;
 	parameter "passenger spawn frequency" var: spawn_frequency min: 100.0#s max: 2000.0#s step:50.0#s;
+	parameter "bus number per line" var: buses_nb_per_line min:1 max:5 step:1;
+	parameter "cars number" var: cars_nb min:0 max:200 step:25;
+	parameter "motorbikes number" var: motorbikes_nb min:0 max:500 step:25;
 	output {
 		display city_display type:3d {
 
@@ -634,6 +692,8 @@ experiment road_traffic_with_building type: gui{
 			
 			species passenger aspect: base;
 			species bus aspect:base;
+			species motorbike aspect:base;
+			species car aspect:base;
 			species busLine aspect: base refresh:false transparency:2/3;
 			species stop aspect: base refresh:false transparency:2/3;
 		}

@@ -46,12 +46,12 @@ $> docker compose down
 > if you do not want persistant database, you can delete it by adding `-v` option.
 
 ## 3. Fix me
-There are no known bugs to fix.
+* [ ] vehicles can sometimes get stuck
 
 ## 4. To do and perspectives
+* [x] add random traffic
 * [ ] stops are inserted into shapefiles but an improvements are needed to make the insertion smoother
 * [ ] make the batch experiment run in parallel
-* [ ] add random traffic
 * [ ] adjust bus speed (according to traffic and acceleration)
 * [ ] consider personal behavior
 * [ ] consider source and target not necessarily on stops
