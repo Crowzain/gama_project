@@ -8,6 +8,8 @@
 
 model projectZZ3
 
+import "traffic.gaml"
+
 global {
 	
 	//files variables
@@ -350,7 +352,7 @@ species busLine schedules: []{
     }
 }
 
-species bus skills:[driving]{
+species bus parent:vehicle_base{
 
 	rgb color const:true;
 	
@@ -374,8 +376,11 @@ species bus skills:[driving]{
 	float stop_time<-20#s;
 	
 	init{
+		max_acceleration <- 1#m/#s/#s;
 		vehicle_length <- 12#m;
 		max_speed <- 70 #km/#h;
+		num_lanes_occupied <- 2;
+		proba_use_linked_road <- 0.0;
 	}
 	
 	aspect base {
@@ -596,46 +601,6 @@ species passenger skills:[moving]{
 		on_board <- true;
 		color <- #green;
 		updated <- true;
-	}
-}
-
-species road  skills:[road_skill]{
-	
-	rgb color <- #black const:true;
-	
-	int num_lanes<-1 const:true;
-	bool oneway const:true;
-	
-	aspect base {
-		draw shape color: color;
-	}
-	
-	action create_opposite_direction_road(road r){
-		create road with:[
-			maxspeed::r.maxspeed, oneway::false, 
-			shape::polyline(reverse(shape.points)), name::name
-		]{	
-			self.linked_road <- r;
-			r.linked_road <- self;
-		}
-	}
-	
-	action connect_two_intersections(intersection source, intersection target){
-		source_node <- source;
-		target_node <- target;
-		add self to: target.roads_in;
-		add self to: source.roads_out;
-	}
-}
-
-species intersection  skills:[intersection_skill] {
-	
-	rgb color <- #pink const:true;
-	
-	string type const:true;
-	
-	aspect base {
-		draw shape+2 color: color ;
 	}
 }
 
