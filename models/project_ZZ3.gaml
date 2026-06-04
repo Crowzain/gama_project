@@ -149,8 +149,11 @@ global {
 
 	action create_roads{
 		create road from: shape_file_roads with:[
-			maxspeed::float(read('maxspeed')), oneway::bool('oneway')
+			maxspeed::float(read('maxspeed'))#km/#h, oneway::bool('oneway')
 		]{
+			if maxspeed < 1#km/#h{
+				maxspeed <- 10.0#km/#h;
+			}
 			if oneway = false{
 				do create_opposite_direction_road(self);
 			}
@@ -171,8 +174,8 @@ global {
 
 			if oneway = true{
 				intersection tmp <- source;
-				source <- target;
-				target <- tmp;
+				source_node <- target;
+				target_node <- tmp;
 			}
 
 
@@ -412,7 +415,14 @@ species bus parent:vehicle_base{
 		next_stop_index <- next_stop_index + direction;
 		next_stop <- line.stops[next_stop_index];
 		final_target <- closest_to(intersection, next_stop);
-		do compute_path graph: road_graph target:final_target;
+		map edge_weights <- road as_map (each::each.shape.perimeter);
+		//mettre un poids infini sur la route liée courante
+		if current_road != nil and current_road.linked_road != nil {
+			if length(current_road.target_node.roads_out)>=2{
+				edge_weights[current_road.linked_road] <- 99999;
+			}
+		}
+		do compute_path graph: road_graph with_weights edge_weights target:final_target;
 	}
 	
 	action update_direction{
@@ -493,10 +503,15 @@ species car parent:vehicle_base{
 	}
 	
 	reflex move{
-		do drive_random graph:road_graph;
-		//if current_road.target_node{
+		if current_road != nil and current_road.linked_road != nil{
+			if length(current_road.target_node.roads_out)>=2{
+				int l <- length(current_target.roads_out)-1;
+				map<road, float> proba_roads <- (current_target.roads_out as_map (each::1/l));
+				proba_roads[current_road.linked_road] <- 0.0;
+			}
 			
-		//}
+		}
+		do drive_random graph:road_graph;
 	}
 }
 
@@ -565,8 +580,8 @@ species passenger skills:[moving]{
 		}
 		if (verbose_mode){
 			write string(self) + " arrived at " + self.target;
-			write "waiting time: " +string(waiting_time/120)+" min";
-			write "time to reach: " +string(time_to_reach_target/120)+" min";
+			write "waiting time: " +string(waiting_time/60/step)+" min";
+			write "time to reach: " +string(time_to_reach_target/60/step)+" min";
 			write "";
 		}
 		passengers_nb<-passengers_nb-1;

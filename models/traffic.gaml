@@ -16,6 +16,10 @@ species road  skills:[road_skill]{
 	
 	int num_lanes<-2 const:true;
 	bool oneway const:true;
+	road linked_road <- nil;
+	
+	intersection source_node <- nil;
+	intersection target_node <- nil;
 	
 	aspect base {
 		draw shape color: color;
@@ -44,6 +48,8 @@ species intersection  skills:[intersection_skill] {
 	rgb color <- #pink const:true;
 	
 	string type const:true;
+	list<road> roads_in <- [];
+	list<road> roads_out <- [];
 	
 	aspect base {
 		draw shape+2 color: color ;
@@ -51,8 +57,10 @@ species intersection  skills:[intersection_skill] {
 }
 
 species vehicle_base virtual:true skills:[driving]{
+	road current_road <-nil;
+	intersection current_target <- nil;
 	init{
 		right_side_driving <- true;
-		proba_respect_priorities <- 0.75;
+		proba_respect_priorities <- 1.0;
 	}
 }
