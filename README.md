@@ -50,7 +50,8 @@ $> docker compose down
 
 ## 4. To do and perspectives
 * [x] add random traffic
-* [ ] stops are inserted into shapefiles but an improvements are needed to make the insertion smoother
+* [x] stops are inserted into shapefiles but an improvements are needed to make the insertion smoother 
+(via a pipeline including a projection and interpolation)
 * [ ] make the batch experiment run in parallel
 * [ ] adjust bus speed (according to traffic and acceleration)
 * [ ] consider personal behavior
