@@ -46,7 +46,8 @@ $> docker compose down
 > if you do not want persistant database, you can delete it by adding `-v` option.
 
 ## 3. Fix me
-* [ ] vehicles can sometimes get stuck
+* [ ] use real Linestring (curves) instead of segments (Linestring of size 2) because some segments are shorter than vehicles.
+One suggested temporary solution is to set the vehicles to a shorter scale  (turn meters into millimeters)
 
 ## 4. To do and perspectives
 * [x] add random traffic
