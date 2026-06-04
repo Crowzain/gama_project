@@ -536,7 +536,12 @@ species passenger skills:[moving]{
 	
 	
 	aspect base {
-		draw square(30) color: color border: #black;
+		if on_board{			
+			draw square(30) color: color border: #black at:current_bus.location;
+		}
+		else{
+			draw square(30) color: color border: #black;
+		}
 	}
 	init{
 		do find_valid_target;
