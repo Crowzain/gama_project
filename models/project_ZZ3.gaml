@@ -424,10 +424,9 @@ species bus parent:vehicle_base{
 		next_stop <- line.stops[next_stop_index];
 		final_target <- closest_to(intersection, next_stop);
 		map edge_weights <- road as_map (each::each.shape.perimeter);
-		//mettre un poids infini sur la route liée courante
 		if current_road != nil and current_road.linked_road != nil {
 			if length(current_road.target_node.roads_out)>=2{
-				edge_weights[current_road.linked_road] <- 99999;
+				edge_weights[current_road.linked_road] <- 99999 #km;
 			}
 		}
 		do compute_path graph: road_graph with_weights edge_weights target:final_target;
