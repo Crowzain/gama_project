@@ -6,19 +6,21 @@ from write_csv import write_bus_stop_csv
 from DB_Connectors import create_tables
 from DB_Connectors import DBConnector, DuckDB_Connector, SQLite_Connector, MySQL_Connector
 
-def read_cli_option()->tuple[bool, DBConnector, int, int, bool]:
+def read_cli_option()->tuple[bool, DBConnector, int, int, bool, str]:
 
 	verbose = False
 	db = DuckDB_Connector()
 	stops_threshold_line = 5
 	nb_lines_max = 100
 	create_db_flag = False
+	place = "10th arrondissement"
 
 	args = sys.argv[1:]
 	options = "v"
 	long_options = [
 		"verbose", "duckdb", "mysql", "sqlite",
-		"create-db", "stops-threshold-line=", "nb-lines-max="
+		"create-db", "stops-threshold-line=", 
+		"nb-lines-max=", "place="
 		]
 
 	dict_options = {
@@ -43,14 +45,16 @@ def read_cli_option()->tuple[bool, DBConnector, int, int, bool]:
 				nb_lines_max = int(currentVal)
 			elif currentArg == "--create-db":
 				create_db_flag = True
-	return verbose, db, stops_threshold_line, nb_lines_max, create_db_flag
+			elif currentArg == "--place":
+				place = currentVal
+	return verbose, db, stops_threshold_line, nb_lines_max, create_db_flag, place
 
 if __name__=="__main__":
 	create_reduced_data_repertory()
-	verbose, db, stops_threshold_line, nb_lines_max, create_db_flag = read_cli_option()
+	verbose, db, stops_threshold_line, nb_lines_max, create_db_flag, place = read_cli_option()
 	import_repertories()
 	if create_db_flag:
 		create_tables(db, verbose=verbose)
 	
-	reduce_shapefiles(db, DEFAULT_BOX)
-	write_bus_stop_csv(DEFAULT_BOX, db, stops_threshold_line=stops_threshold_line, nb_lines_max=nb_lines_max)
+	reduce_shapefiles(db, place)
+	write_bus_stop_csv(place, db, stops_threshold_line=stops_threshold_line, nb_lines_max=nb_lines_max)

@@ -7,3 +7,6 @@ reduced_data*
 .vscode
 .env
 results/
+*.ipynb
+*.bin
+cache

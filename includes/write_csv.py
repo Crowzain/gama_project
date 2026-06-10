@@ -2,12 +2,12 @@ from config import *
 from DB_Connectors import DBConnector
 
 def write_bus_stop_csv(
-	box:box,
+	place,
 	db_connector:DBConnector,
 	stops_threshold_line:int=20,
 	nb_lines_max:int=100,
 ):
-	query_bus_stop_in_box(box, db_connector, stops_threshold_line, nb_lines_max)
+	query_bus_stop_in_box(db_connector, stops_threshold_line, nb_lines_max)
 	output = db_connector.con.fetchall()
 	write_bus_lines_list_csv(output)
 	write_bus_lines_csv(output)
@@ -15,18 +15,21 @@ def write_bus_stop_csv(
 	return None
 
 def query_bus_stop_in_box(
-		box:box,
 		db_connector:DBConnector,
 		stops_threshold_line:int=5,
 		nb_lines_max:int=100,
 	)->None:
+	reduced_roads_path = REDUCED_DATA_PATH / "reduced_roads.shp"
 	db_connector.con.execute("""
 		WITH 
 			filtered_stops AS (
 				SELECT stop_id
 				FROM stops
-				WHERE stop_lat BETWEEN $bottom AND $top
-				AND stop_lon BETWEEN $left AND $right
+				WHERE ST_Contains(
+				(
+					SELECT ST_ConvexHull(ST_Union_Agg(geom)) FROM ST_ReadSHP($reduced_roads_path)
+				)
+				, ST_Point(stop_lon, stop_lat))
 			),
 		
 			candidate_services AS (
@@ -60,10 +63,7 @@ def query_bus_stop_in_box(
 		LIMIT $nb_lines;
 		""",
 		{
-			"left": box.left, 
-			"bottom": box.bottom, 
-			"right": box.right, 
-			"top": box.top,
+			"reduced_roads_path":str(reduced_roads_path),
 			"stops_threshold_line": stops_threshold_line,
 			"nb_lines": nb_lines_max
 		}

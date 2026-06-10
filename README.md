@@ -24,6 +24,7 @@ Options:
 * `--stops-threshold-line=#value`: minimum stops on the line in the area *(value is 20 by default)*
 * `--nb-lines-max=#value`: maximum of bus lines selected in the area *(value is 100 by default)*
 * `--create-db`: flag whether the database is written (or overwritten)
+* `--place=#value`: name of a place in the Île-de-France area where you can work *(value is 10th arrondissement by default)*
 
 This script also creates csv files related to lines, and smaller files according to a smaller working zone (10th arrondissement)
 into `reduced_data` folder.

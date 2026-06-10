@@ -15,32 +15,37 @@ def create_reduced_data_repertory()->None:
 
 def reduce_shapefiles(
 		db_connector:DBConnector,
-		box:box,
+		place:str|box,
 	)->None:
 
 	db_connector.con.execute("INSTALL spatial;")
 	db_connector.con.execute("LOAD spatial;")
-	build_network(db_connector, box)
-	reduce_buildings(db_connector, box)
+	wkb_enveloppe = build_network(db_connector, place)
+	reduce_buildings(db_connector, wkb_enveloppe)
 
 	return None
 
 def build_network(
 		db_connector:DBConnector,
-		box:box,
+		place:str|box,
 		reduced_roads_path:Path|str|None=None,
 		reduced_intersections_path:Path|str|None=None,
-	)->None:
-
-	intersection_gdf, road_gdf = create_gdfs(box)
+	)->bytes:
+	if isinstance(place, str): 
+		intersection_gdf, road_gdf = create_gdfs_from_place(place)
+	elif isinstance(place, box):
+		intersection_gdf, road_gdf = create_gdfs_from_box(place)
+	else:
+		raise TypeError("Provided input type is neither str nor box")
 	#intersection_gdf.index = intersection_gdf.index.astype("str")
 
-	reduce_stops(db_connector, box, road_gdf)
+	wkb_enveloppe = get_wkb_enveloppe(road_gdf)
+
+	reduce_stops(db_connector, road_gdf, wkb_enveloppe)
 	export_gdfs_to_shapefiles(intersection_gdf, road_gdf, reduced_roads_path, reduced_intersections_path)
+	return wkb_enveloppe
 
-	return None
-
-def create_gdfs(box:box)->tuple[gpd.GeoDataFrame, gpd.GeoDataFrame]:
+def create_gdfs_from_box(box:box)->tuple[gpd.GeoDataFrame, gpd.GeoDataFrame]:
 	graph = osmnx.graph.graph_from_bbox(
 		bbox=(
 			box.left,
@@ -53,10 +58,19 @@ def create_gdfs(box:box)->tuple[gpd.GeoDataFrame, gpd.GeoDataFrame]:
 	)
 	return osmnx.convert.graph_to_gdfs(graph)
 
+
+def create_gdfs_from_place(place:str)->tuple[gpd.GeoDataFrame, gpd.GeoDataFrame]:
+	graph = osmnx.graph.graph_from_place(
+		place,
+		network_type="drive",
+		simplify=False
+	)
+	return osmnx.convert.graph_to_gdfs(graph)
+
 def reduce_stops(
 		db_connector:DBConnector,
-		box:box,
 		road_gdf:gpd.GeoDataFrame,
+		wkb_enveloppe:bytes,
 		reduced_stops_path:Path|str|None=None,
 		stops_threshold_line:int=5,
 		nb_lines_max:int=100,
@@ -69,8 +83,7 @@ def reduce_stops(
 				filtered_stops AS (
 					SELECT stop_id, stop_lat, stop_lon
 					FROM stops
-					WHERE stop_lat BETWEEN $bottom AND $top
-					AND stop_lon BETWEEN $left AND $right
+					WHERE ST_Contains(ST_GeomFromWKB($wkb_enveloppe), ST_Point(stop_lon, stop_lat))
 				),
 			
 				candidate_services AS (
@@ -118,10 +131,7 @@ def reduce_stops(
 				JOIN filtered_stops fs USING (stop_id);
 		""",
 		{
-			"left": box.left, 
-			"bottom": box.bottom, 
-			"right": box.right, 
-			"top": box.top,
+			"wkb_enveloppe": wkb_enveloppe,
 			"stops_threshold_line": stops_threshold_line,
 			"nb_lines": nb_lines_max
 		}
@@ -138,6 +148,9 @@ def reduce_stops(
 	gdf_with_inserted_row = gpd.GeoDataFrame(rows_to_add, crs=4326)
 	road_gdf = pd.concat([road_gdf, gdf_with_inserted_row])
 	return stop_gdf
+
+def get_wkb_enveloppe(road_gdf:gpd.GeoDataFrame)->bytes:
+	return shapely.to_wkb(road_gdf[["geometry"]].union_all().convex_hull)
 
 def insert_stop_into_road_gdf(
 		stop,
@@ -271,7 +284,7 @@ def export_gdfs_to_shapefiles(
 
 def reduce_buildings(
 		db_connector:DBConnector,
-		box:box,
+		wkb_enveloppe:bytes,
 		building_path:Path|str|None=None,
 		reduced_building_path:Path|str|None=None,
 		apartments_office_only:bool=False
@@ -282,21 +295,18 @@ def reduce_buildings(
 	if reduced_building_path is None:
 		clear_files(REDUCED_DATA_PATH, "*reduced_buildings*")
 		reduced_building_path = REDUCED_DATA_PATH / "reduced_buildings.shp"
-
+		
 	db_connector.con.execute(
 		f"""
 			COPY (SELECT * FROM ST_ReadSHP($input_file)
-			WHERE ST_Contains(ST_MakeEnvelope($left, $bottom, $right, $top), geom)
+			WHERE ST_Contains(ST_GeomFromWKB($wkb_enveloppe), geom)
 			{"AND type in['apartments', 'office']" if apartments_office_only else ""}) TO $output_file
 			WITH (FORMAT gdal, DRIVER 'ESRI Shapefile', LAYER_CREATION_OPTIONS 'WRITE_BBOX=YES', SRS 'EPSG:4326');
 		""",
 		{
 			"input_file": str(building_path),
 			"output_file": str(reduced_building_path),
-			"left": box.left, 
-			"bottom": box.bottom, 
-			"right": box.right, 
-			"top": box.top
+			"wkb_enveloppe": wkb_enveloppe
 		}
 	)
 	return None
