@@ -277,9 +277,9 @@ def export_gdfs_to_shapefiles(
 		clear_files(REDUCED_DATA_PATH, "*reduced_intersections*")
 		reduced_intersections_path = REDUCED_DATA_PATH / "reduced_intersections.shp"
 
-	intersection_gdf.drop(["street_count", "highway", "junction"], axis=1).to_file(reduced_intersections_path)
+	intersection_gdf.drop(["street_count", "highway"], axis=1).to_file(reduced_intersections_path)
 
-	road_gdf.drop(["junction", "bridge", "tunnel"], axis=1).to_file(reduced_roads_path)
+	road_gdf.drop(["bridge", "tunnel"], axis=1).to_file(reduced_roads_path)
 	return None
 
 def reduce_buildings(
