@@ -257,8 +257,8 @@ species building schedules: []{
 
 species stop schedules: []{
 	
-	geometry shape <-circle(10) const:true;
-	rgb color <- #yellow const:true;
+	geometry shape <-circle(15) const:true;
+	rgb color <-nil;
 	
 	string stop_id const:true;
 	bool activated<-false; // variable to only display used stops 
@@ -274,9 +274,9 @@ species stop schedules: []{
 	}
 	
 	aspect base {
-		if activated {
-			draw shape color: color border: #black;	
-		}
+
+		draw shape color: color border:#black;	
+		
 	}
 	
 	action call_passenger_factory{
@@ -305,15 +305,17 @@ species busLine schedules: []{
     		node1 <- stops[i].location;
     		node2 <- stops[i+1].location;          
             path seg <- path_between(road_graph, node1, node2);
- 			draw shape(seg) color: color width: 6;
+ 			draw shape(seg) color: color width: 15;
         }
     }
     
     init{
     	string file_name <- "../includes/reduced_data/"+self.route_id+".txt";
 		file file_line <- csv_file(file_name, ",", string, true);
-		
 		do build_stops_list(file_line);
+		if length(stops)=1{
+			do die;
+		}
     }
     
     action build_stops_list(file stops_file){
@@ -347,6 +349,12 @@ species busLine schedules: []{
     	if current_stop.location distance_to previous_stop.location >=eps{
 			current_stop.activated <- true;
 			add current_stop to: stops;
+			if current_stop.color = nil{
+				current_stop.color <- color;
+			}
+			else {
+				current_stop.color <- #lightgrey;
+			}
 			do update_bus_graph(previous_stop, current_stop);
 		}
     }
@@ -389,6 +397,7 @@ species bus parent:vehicle_base{
 		max_speed <- 70 #km/#h;
 		num_lanes_occupied <- 2;
 		proba_use_linked_road <- 0.0;
+		speed_coeff <- 1.0;
 	}
 	
 	aspect base {
@@ -416,10 +425,9 @@ species bus parent:vehicle_base{
 		next_stop <- line.stops[next_stop_index];
 		final_target <- closest_to(intersection, next_stop);
 		map edge_weights <- road as_map (each::each.shape.perimeter);
-		//mettre un poids infini sur la route liée courante
 		if current_road != nil and current_road.linked_road != nil {
 			if length(current_road.target_node.roads_out)>=2{
-				edge_weights[current_road.linked_road] <- 99999;
+				edge_weights[current_road.linked_road] <- 99999 #km;
 			}
 		}
 		do compute_path graph: road_graph with_weights edge_weights target:final_target;
@@ -687,13 +695,14 @@ experiment road_traffic type: gui {
 		display city_display type:3d {
 
 			species road aspect: base refresh:false;
+			//species intersection aspect: base refresh:false;
 			
 			species passenger aspect: base;
 			species bus aspect:base;
 			species motorbike aspect:base;
 			species car aspect:base;
 			species busLine aspect: base refresh:false transparency:2/3;
-			species stop aspect: base refresh:false transparency:2/3;
+			species stop aspect: base refresh:false;
 		}
 		
 		monitor "Number of people agents" value: passengers_nb;
@@ -718,7 +727,7 @@ experiment road_traffic_with_building type: gui{
 			species motorbike aspect:base;
 			species car aspect:base;
 			species busLine aspect: base refresh:false transparency:2/3;
-			species stop aspect: base refresh:false transparency:2/3;
+			species stop aspect: base refresh:false;
 		}
 		
 		monitor "Number of people agents" value: passengers_nb;
