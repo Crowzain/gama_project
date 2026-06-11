@@ -312,8 +312,10 @@ species busLine schedules: []{
     init{
     	string file_name <- "../includes/reduced_data/"+self.route_id+".txt";
 		file file_line <- csv_file(file_name, ",", string, true);
-		do build_stops_list(file_line);
-		if length(stops)=1{
+		if length(file_line)>1{
+			do build_stops_list(file_line);
+		}
+		else{
 			do die;
 		}
     }
