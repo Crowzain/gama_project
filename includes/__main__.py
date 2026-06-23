@@ -14,13 +14,14 @@ def read_cli_option()->dict:
 	nb_lines_max = 100
 	create_db_flag = False
 	place = "10th arrondissement"
+	clean = False
 
 	args = sys.argv[1:]
 	options = "v"
 	long_options = [
 		"verbose", "duckdb", "mysql", "sqlite",
 		"create-db", "stops-threshold-line=", 
-		"nb-lines-max=", "place="
+		"nb-lines-max=", "place=", "clean"
 		]
 
 	dict_options = {
@@ -56,6 +57,7 @@ def read_cli_option()->dict:
 			"nb_lines_max": nb_lines_max,
 			"create_db_flag": create_db_flag, 
 			"place": place,
+			"clean": clean
 		}
 
 def clear_files(
@@ -70,6 +72,11 @@ if __name__=="__main__":
 	create_reduced_data_repertory()
 	cli_dict = read_cli_option()
 	import_repertories()
+	if cli_dict["clean"]:
+		clear_files(REDUCED_DATA_PATH, "*")
+		current_folder = Path()
+		clear_files(current_folder, "*.db")
+		sys.exit("Workspace has been successfully cleared")
 	if cli_dict["create_db_flag"]:
 		create_tables(cli_dict["db"], verbose=cli_dict["verbose"])
 	

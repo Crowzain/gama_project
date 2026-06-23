@@ -25,6 +25,7 @@ Options:
 * `--nb-lines-max=#value`: maximum of bus lines selected in the area *(value is 100 by default)*
 * `--create-db`: flag whether the database is written (or overwritten)
 * `--place=#value`: name of a place in the Île-de-France area where you can work *(value is 10th arrondissement by default)*
+* `--clean`: flag whether to delete the written data files
 
 This script also creates csv files related to lines, and smaller files according to a smaller working zone (10th arrondissement)
 into `reduced_data` folder.
