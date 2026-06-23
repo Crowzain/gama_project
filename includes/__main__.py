@@ -4,9 +4,9 @@ from import_data import import_repertories
 from reduce_shapefile import create_reduced_data_repertory, reduce_shapefiles
 from write_csv import write_bus_stop_csv
 from DB_Connectors import create_tables
-from DB_Connectors import DBConnector, DuckDB_Connector, SQLite_Connector, MySQL_Connector
+from DB_Connectors import DuckDB_Connector, SQLite_Connector, MySQL_Connector
 
-def read_cli_option()->tuple[bool, DBConnector, int, int, bool, str]:
+def read_cli_option()->dict:
 
 	verbose = False
 	db = DuckDB_Connector()
@@ -47,14 +47,36 @@ def read_cli_option()->tuple[bool, DBConnector, int, int, bool, str]:
 				create_db_flag = True
 			elif currentArg == "--place":
 				place = currentVal
-	return verbose, db, stops_threshold_line, nb_lines_max, create_db_flag, place
+			elif currentArg == "--clean":
+				clean = True
+	return {
+			"verbose": verbose, 
+			"db": db, 
+			"stops_threshold_line": stops_threshold_line,
+			"nb_lines_max": nb_lines_max,
+			"create_db_flag": create_db_flag, 
+			"place": place,
+		}
+
+def clear_files(
+		repertory_path:Path,
+		file_name_regexp:str
+	)->None:
+	for file in Path.glob(repertory_path, file_name_regexp):
+		file.unlink()
+	return None
 
 if __name__=="__main__":
 	create_reduced_data_repertory()
-	verbose, db, stops_threshold_line, nb_lines_max, create_db_flag, place = read_cli_option()
+	cli_dict = read_cli_option()
 	import_repertories()
-	if create_db_flag:
-		create_tables(db, verbose=verbose)
+	if cli_dict["create_db_flag"]:
+		create_tables(cli_dict["db"], verbose=cli_dict["verbose"])
 	
-	reduce_shapefiles(db, place)
-	write_bus_stop_csv(place, db, stops_threshold_line=stops_threshold_line, nb_lines_max=nb_lines_max)
+	reduce_shapefiles(cli_dict["db"], cli_dict["place"])
+	write_bus_stop_csv(
+		cli_dict["place"], 
+		cli_dict["db"], 
+		stops_threshold_line=cli_dict["stops_threshold_line"], 
+		nb_lines_max=cli_dict["nb_lines_max"]
+		)
