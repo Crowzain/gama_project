@@ -78,7 +78,8 @@ def reduce_stops(
 	if reduced_stops_path is None:
 		clear_files(REDUCED_DATA_PATH, "*reduced_stops*")
 		reduced_stops_path = REDUCED_DATA_PATH / "reduced_stops.shp"
-	stop_gdf = db_connector.con.execute("""
+	if ZONE_MODE == "P":
+		stop_gdf = db_connector.con.execute("""
 			WITH 
 				filtered_stops AS (
 					SELECT stop_id, stop_lat, stop_lon
@@ -136,8 +137,69 @@ def reduce_stops(
 			"nb_lines": nb_lines_max
 		}
 	).df()
+	elif "H":
+		stop_gdf = db_connector.con.execute("""WITH 
+			filtered_stops AS (
+				SELECT stop_id, stop_lat, stop_lon
+				FROM stops
+				WHERE ST_Contains(ST_GeomFromWKB($wkb_enveloppe), ST_Point(stop_lon, stop_lat))
+			),
+		
+			candidate_services AS (
+				SELECT trip_id FROM trips
+				JOIN calendar USING(service_id)
+				WHERE monday AND tuesday AND wednesday AND thursday AND friday
+			),
+			
+			candidate_routes AS (
+				SELECT route_id FROM routes
+				WHERE route_type=3
+			),
+			
+			filtered_trips AS (
+				SELECT DISTINCT ON(trip_id) trip_id, route_id FROM trips
+				JOIN candidate_services USING(trip_id)
+				JOIN candidate_routes USING(route_id)
+			),
+			
+			candidate_stops AS (
+				SELECT stop_id, trip_id, stop_sequence, stop_lon, stop_lat FROM stop_times
+				JOIN filtered_stops USING(stop_id)
+				WHERE departure_time>='7:00:00' AND arrival_time <='18:00:00'
+			),
+			 
+			selected_lines AS (
+						SELECT DISTINCT ON(route_id) route_id, list(stop_id) AS stop_ids FROM candidate_stops
+						JOIN filtered_trips USING (trip_id)
+						GROUP BY (trip_id, route_id)
+						HAVING COUNT(stop_id)>$stops_threshold_line
+						ORDER BY COUNT(stop_id) DESC
+						LIMIT $nb_lines
+					),
+				
+			unnested AS (
+				SELECT DISTINCT unnest(stop_ids) AS stop_id
+				FROM selected_lines
+			)
+				
+			SELECT
+				unnested.stop_id,
+				fs.stop_lon AS x, 
+				fs.stop_lat AS y
+			FROM unnested
+			JOIN filtered_stops fs USING (stop_id);""",
+				{
+					"wkb_enveloppe": wkb_enveloppe,
+					"stops_threshold_line": stops_threshold_line,
+					"nb_lines": nb_lines_max
+				}
+			).df()
+	else:
+		raise ValueError("Unknown Zone Mode")
 	stop_gdf = gpd.GeoDataFrame(stop_gdf)
+	print(stop_gdf.head())
 	stop_gdf.geometry = gpd.points_from_xy(stop_gdf['x'], stop_gdf['y'], crs=4326)
+	assert len(stop_gdf)
 	rows_to_add = []
 	indices_to_drop = []
 	for stop in stop_gdf.itertuples():

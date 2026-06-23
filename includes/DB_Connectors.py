@@ -119,11 +119,11 @@ def create_tables(
 		verbose:bool=False,
 		box:box|None=None
 	)->None:
-	
 	if input_path is None:
 		input_path = GTFS_REPERTORY_PATH
 	else:
-		if isinstance(input_path, str): input_path = Path(input_path)
+		if isinstance(input_path, str): 
+			input_path = Path(input_path) 
 		if not input_path.exists():
 			raise BaseException(f"input path {input_path} does not exist.")
 		
@@ -131,6 +131,8 @@ def create_tables(
 		tables = map((lambda x: x.stem), input_path.rglob('*.txt'))
 
 	for table in tables:
+		if verbose:
+			print(table)
 		if "stops" == table and box is not None:
 			create_table_query = f"""
 				CREATE OR REPLACE TABLE {f"{db_connector.prefix}.{table}" if db_connector.prefix is not None else table} AS 
@@ -138,22 +140,18 @@ def create_tables(
 					WHERE lon>=$left AND lon<=$right AND stop_lat>=$bottom AND stop_lat<=$top;
 			"""
 			db_connector.con.execute(create_table_query, parameters={
-				"table": f"{db.prefix}.{table}" if db.prefix is not None else table,
-				"input_file": f"{GTFS_REPERTORY_PATH/table}.txt",
+				"table": f"{db_connector.prefix}.{table}" if db_connector.prefix is not None else table,
+				"input_file": f"{input_path/table}.txt",
 				"left": box.left, 
 				"right": box.right, 
 				"bottom": box.bottom, 
 				"top": box.top})
 		else:
-			if verbose:
-				print(table)
 			create_table_query = f"""
 				CREATE OR REPLACE TABLE {f"{db_connector.prefix}.{table}" if db_connector.prefix is not None else table} AS 
 					SELECT * FROM read_csv($input_file)
 			"""
-			db_connector.con.execute(create_table_query, parameters={
-				"input_file": f"{GTFS_REPERTORY_PATH/table}.txt",
-				})
+			db_connector.con.execute(create_table_query, parameters={"input_file": f"{input_path/table}.txt",})
 		
 	if verbose:
 		db_connector.show()

@@ -1,5 +1,6 @@
 from config import *
 from DB_Connectors import DBConnector
+import numpy as np
 
 def write_bus_stop_csv(
 	place,
@@ -20,8 +21,9 @@ def query_bus_stop_in_box(
 		nb_lines_max:int=100,
 	)->None:
 	reduced_roads_path = REDUCED_DATA_PATH / "reduced_roads.shp"
-	db_connector.con.execute("""
-		WITH 
+	
+	if ZONE_MODE=="P":
+		query = """WITH 
 			filtered_stops AS (
 				SELECT stop_id
 				FROM stops
@@ -60,8 +62,51 @@ def query_bus_stop_in_box(
 		GROUP BY (trip_id, route_id)
 		HAVING COUNT(stop_id)>$stops_threshold_line
 		ORDER BY COUNT(stop_id) DESC
-		LIMIT $nb_lines;
-		""",
+		LIMIT $nb_lines;"""
+	elif ZONE_MODE=="H":
+		query = """WITH 
+			filtered_stops AS (
+				SELECT stop_id
+				FROM stops
+				WHERE ST_Contains(
+				(
+					SELECT ST_ConvexHull(ST_Union_Agg(geom)) FROM ST_ReadSHP($reduced_roads_path)
+				)
+				, ST_Point(stop_lon, stop_lat))
+			),
+		
+			candidate_services AS (
+				SELECT trip_id FROM trips
+				JOIN calendar USING(service_id)
+				WHERE monday AND tuesday AND wednesday AND thursday AND friday
+			),
+			
+			candidate_routes AS (
+				SELECT route_id, route_color FROM routes
+				WHERE route_type=3
+			),
+			
+			filtered_trips AS (
+				SELECT DISTINCT ON(trip_id) trip_id, route_id FROM trips
+				JOIN candidate_services USING(trip_id)
+				JOIN candidate_routes USING(route_id)
+			),
+			
+			candidate_stops AS (
+				SELECT stop_id, trip_id, stop_sequence FROM stop_times
+				JOIN filtered_stops USING(stop_id)
+				WHERE departure_time>='7:00:00' AND arrival_time<='18:00:00'
+			)
+			 
+		SELECT DISTINCT ON(route_id) route_id, list(stop_id ORDER BY stop_sequence) FROM candidate_stops
+		JOIN filtered_trips USING (trip_id)
+		GROUP BY (trip_id, route_id)
+		HAVING COUNT(stop_id)>$stops_threshold_line
+		ORDER BY COUNT(stop_id) DESC
+		LIMIT $nb_lines;"""
+	else:
+		raise ValueError("Unknown Zone Mode")
+	db_connector.con.execute(query,
 		{
 			"reduced_roads_path":str(reduced_roads_path),
 			"stops_threshold_line": stops_threshold_line,
@@ -78,7 +123,12 @@ def write_bus_lines_list_csv(
 	with open(lines_file_name, "w") as lines_file:
 		lines_file.write("name, r, g, b\n")
 		for line in output:
-			rgb = convert_hex_into_rgb(line[1])
+			if ZONE_MODE=="P":
+				rgb = convert_hex_into_rgb(line[1])
+			elif ZONE_MODE=="H":
+				rgb = np.random.default_rng(abs(hash(line[0]))).integers(0, 255, 3, endpoint=True)
+			else:
+				raise ValueError("Unknown Zone Mode")
 			lines_file.write(f"{line[0]}, {rgb[0]}, {rgb[1]}, {rgb[2]}\n")
 	return None
 
@@ -106,6 +156,6 @@ def fill_stop_into_bus_line_csv(
 )->None:
 	with open(file_path, "w") as f:
 		f.write(f"{line[0]}\n")
-		for stop in line[2]:
+		for stop in line[1+(ZONE_MODE=="P")]:
 			f.write(f"{stop}\n")
 	return None

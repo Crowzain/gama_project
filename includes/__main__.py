@@ -13,7 +13,8 @@ def read_cli_option()->dict:
 	stops_threshold_line = 5
 	nb_lines_max = 100
 	create_db_flag = False
-	place = "10th arrondissement"
+	#place = "10th arrondissement"
+	place = DEFAULT_BOX_HANOI
 	clean = False
 
 	args = sys.argv[1:]
@@ -50,6 +51,7 @@ def read_cli_option()->dict:
 				place = currentVal
 			elif currentArg == "--clean":
 				clean = True
+
 	return {
 			"verbose": verbose, 
 			"db": db, 
@@ -57,7 +59,7 @@ def read_cli_option()->dict:
 			"nb_lines_max": nb_lines_max,
 			"create_db_flag": create_db_flag, 
 			"place": place,
-			"clean": clean
+			"clean": clean,
 		}
 
 def clear_files(
@@ -78,7 +80,7 @@ if __name__=="__main__":
 		clear_files(current_folder, "*.db")
 		sys.exit("Workspace has been successfully cleared")
 	if cli_dict["create_db_flag"]:
-		create_tables(cli_dict["db"], verbose=cli_dict["verbose"])
+		create_tables(cli_dict["db"], verbose=cli_dict["verbose"], input_path=(Path("hanoi_gtfs_am") if ZONE_MODE=="H" else None))
 	
 	reduce_shapefiles(cli_dict["db"], cli_dict["place"])
 	write_bus_stop_csv(
