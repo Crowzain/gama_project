@@ -230,7 +230,7 @@ global {
 		create busLine from:file_lines with:[route_id::string(read ('name')), color::rgb([read ('r'), read ('g'), read ('b')])];
 		
 		do filter_stops;
-		do initialize_buses(buses_nb_per_line);
+		//do initialize_buses(buses_nb_per_line);
 		ask stop{
 			do call_passenger_factory;
 		}
@@ -257,8 +257,8 @@ species building schedules: []{
 
 species stop schedules: []{
 	
-	geometry shape <-circle(15) const:true;
-	rgb color <-nil;
+	geometry shape <-circle(10) const:true;
+	rgb color <- #yellow const:true;
 	
 	string stop_id const:true;
 	bool activated<-false; // variable to only display used stops 
@@ -305,7 +305,7 @@ species busLine schedules: []{
     		node1 <- stops[i].location;
     		node2 <- stops[i+1].location;          
             path seg <- path_between(road_graph, node1, node2);
- 			draw shape(seg) color: color width: 15;
+ 			draw shape(seg) color: color width: 6;
         }
     }
     
@@ -351,12 +351,13 @@ species busLine schedules: []{
     	if current_stop.location distance_to previous_stop.location >=eps{
 			current_stop.activated <- true;
 			add current_stop to: stops;
+			/* 
 			if current_stop.color = nil{
 				current_stop.color <- color;
 			}
 			else {
 				current_stop.color <- #lightgrey;
-			}
+			}*/
 			do update_bus_graph(previous_stop, current_stop);
 		}
     }
@@ -688,10 +689,10 @@ species passenger skills:[moving]{
 
 experiment road_traffic type: gui {
 	parameter "seed: " var: int_seed min: 1 max: 100 step:1;
-	parameter "passenger spawn frequency" var: spawn_frequency min: 100.0#s max: 2000.0#s step:50.0#s;
+	parameter "passenger spawn frequency" var: spawn_frequency min: 500.0#s max: 20000.0#s step:500.0#s;
 	parameter "bus number per line" var: buses_nb_per_line min:1 max:5 step:1;
-	parameter "cars number" var: cars_nb min:0 max:20 step:1;
-	parameter "motorbikes number" var: motorbikes_nb min:0 max:50 step:1;
+	parameter "cars number" var: cars_nb min:0 max:200 step:25;
+	parameter "motorbikes number" var: motorbikes_nb min:0 max:500 step:25;
 	output {
 		display city_display type:3d {
 
@@ -703,7 +704,7 @@ experiment road_traffic type: gui {
 			species motorbike aspect:base;
 			species car aspect:base;
 			species busLine aspect: base refresh:false transparency:2/3;
-			species stop aspect: base refresh:false;
+			species stop aspect: base refresh:false transparency:2/3;
 		}
 		
 		monitor "Number of people agents" value: passengers_nb;
@@ -728,7 +729,7 @@ experiment road_traffic_with_building type: gui{
 			species motorbike aspect:base;
 			species car aspect:base;
 			species busLine aspect: base refresh:false transparency:2/3;
-			species stop aspect: base refresh:false;
+			species stop aspect: base refresh:false  transparency:2/3;
 		}
 		
 		monitor "Number of people agents" value: passengers_nb;

@@ -59,8 +59,11 @@ species intersection  skills:[intersection_skill] {
 species vehicle_base virtual:true skills:[driving]{
 	road current_road <-nil;
 	intersection current_target <- nil;
+	
 	init{
 		right_side_driving <- true;
 		proba_respect_priorities <- 1.0;
+		speed_coeff <- rnd(0.7, 1.0);
+		min_safety_distance <- rnd(0.5, 5)#m;
 	}
 }
