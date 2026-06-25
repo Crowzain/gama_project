@@ -1,6 +1,6 @@
 from config import *
 import getopt, sys
-from import_data import import_repertories
+from import_data import IDF_Area_Mode, Hanoi_Area_Mode
 from reduce_shapefile import create_reduced_data_repertory, reduce_shapefiles
 from write_csv import write_bus_stop_csv
 from DB_Connectors import create_tables
@@ -13,16 +13,17 @@ def read_cli_option()->dict:
 	stops_threshold_line = 5
 	nb_lines_max = 100
 	create_db_flag = False
-	#place = "10th arrondissement"
 	place = DEFAULT_BOX_HANOI
 	clean = False
+	is_IDF_Area_Mode = False
 
 	args = sys.argv[1:]
 	options = "v"
 	long_options = [
 		"verbose", "duckdb", "mysql", "sqlite",
 		"create-db", "stops-threshold-line=", 
-		"nb-lines-max=", "place=", "clean"
+		"nb-lines-max=", "place=", "clean",
+		"is-IDF-Area-Mode"
 		]
 
 	dict_options = {
@@ -51,6 +52,8 @@ def read_cli_option()->dict:
 				place = currentVal
 			elif currentArg == "--clean":
 				clean = True
+			elif currentArg == "--is-IDF-Area-Mode":
+				is_IDF_Area_Mode = True
 
 	return {
 			"verbose": verbose, 
@@ -60,6 +63,7 @@ def read_cli_option()->dict:
 			"create_db_flag": create_db_flag, 
 			"place": place,
 			"clean": clean,
+			"is_IDF_Area_Mode": is_IDF_Area_Mode,
 		}
 
 def clear_files(
@@ -73,19 +77,22 @@ def clear_files(
 if __name__=="__main__":
 	create_reduced_data_repertory()
 	cli_dict = read_cli_option()
-	import_repertories()
+
+	area_mode = IDF_Area_Mode(cli_dict["place"]) if cli_dict["is_IDF_Area_Mode"] else Hanoi_Area_Mode(cli_dict["place"])
+
 	if cli_dict["clean"]:
 		clear_files(REDUCED_DATA_PATH, "*")
 		current_folder = Path()
 		clear_files(current_folder, "*.db")
 		sys.exit("Workspace has been successfully cleared")
 	if cli_dict["create_db_flag"]:
-		create_tables(cli_dict["db"], verbose=cli_dict["verbose"], input_path=(Path("hanoi_gtfs_am") if ZONE_MODE=="H" else None))
+		create_tables(cli_dict["db"], verbose=cli_dict["verbose"], input_path=area_mode.gtfs_repertory_path)
 	
-	reduce_shapefiles(cli_dict["db"], cli_dict["place"])
+	reduce_shapefiles(cli_dict["db"], cli_dict["place"], cli_dict["is_IDF_Area_Mode"])
 	write_bus_stop_csv(
 		cli_dict["place"], 
 		cli_dict["db"], 
+		cli_dict["is_IDF_Area_Mode"],
 		stops_threshold_line=cli_dict["stops_threshold_line"], 
 		nb_lines_max=cli_dict["nb_lines_max"]
-		)
+	)

@@ -120,7 +120,7 @@ def create_tables(
 		box:box|None=None
 	)->None:
 	if input_path is None:
-		input_path = GTFS_REPERTORY_PATH
+		input_path = HANOI_GTFS_REPERTORY_PATH
 	else:
 		if isinstance(input_path, str): 
 			input_path = Path(input_path) 

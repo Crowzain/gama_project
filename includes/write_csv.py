@@ -5,24 +5,25 @@ import numpy as np
 def write_bus_stop_csv(
 	place,
 	db_connector:DBConnector,
+	is_IDF_Area_Mode:bool,
 	stops_threshold_line:int=20,
 	nb_lines_max:int=100,
 ):
-	query_bus_stop_in_box(db_connector, stops_threshold_line, nb_lines_max)
+	query_bus_stop_in_box(db_connector, is_IDF_Area_Mode, stops_threshold_line, nb_lines_max)
 	output = db_connector.con.fetchall()
-	write_bus_lines_list_csv(output)
-	write_bus_lines_csv(output)
+	write_bus_lines_list_csv(output, is_IDF_Area_Mode)
+	write_bus_lines_csv(output, is_IDF_Area_Mode)
 
 	return None
 
 def query_bus_stop_in_box(
 		db_connector:DBConnector,
+		is_IDF_Area_Mode:bool,
 		stops_threshold_line:int=5,
 		nb_lines_max:int=100,
 	)->None:
 	reduced_roads_path = REDUCED_DATA_PATH / "reduced_roads.shp"
-	
-	if ZONE_MODE=="P":
+	if is_IDF_Area_Mode:
 		query = """WITH 
 			filtered_stops AS (
 				SELECT stop_id
@@ -63,7 +64,7 @@ def query_bus_stop_in_box(
 		HAVING COUNT(stop_id)>$stops_threshold_line
 		ORDER BY COUNT(stop_id) DESC
 		LIMIT $nb_lines;"""
-	elif ZONE_MODE=="H":
+	else:
 		query = """WITH 
 			filtered_stops AS (
 				SELECT stop_id
@@ -104,8 +105,6 @@ def query_bus_stop_in_box(
 		HAVING COUNT(stop_id)>$stops_threshold_line
 		ORDER BY COUNT(stop_id) DESC
 		LIMIT $nb_lines;"""
-	else:
-		raise ValueError("Unknown Zone Mode")
 	db_connector.con.execute(query,
 		{
 			"reduced_roads_path":str(reduced_roads_path),
@@ -117,18 +116,17 @@ def query_bus_stop_in_box(
 
 def write_bus_lines_list_csv(
 		output:list[tuple[str, str, list[str]]],
+		is_IDF_Area_Mode:bool
 )->None:
 	lines_file_name = REDUCED_DATA_PATH/"lines.txt"
 
 	with open(lines_file_name, "w") as lines_file:
 		lines_file.write("name, r, g, b\n")
 		for line in output:
-			if ZONE_MODE=="P":
+			if is_IDF_Area_Mode:
 				rgb = convert_hex_into_rgb(line[1])
-			elif ZONE_MODE=="H":
-				rgb = np.random.default_rng(abs(hash(line[0]))).integers(0, 255, 3, endpoint=True)
 			else:
-				raise ValueError("Unknown Zone Mode")
+				rgb = np.random.default_rng(abs(hash(line[0]))).integers(0, 255, 3, endpoint=True)
 			lines_file.write(f"{line[0]}, {rgb[0]}, {rgb[1]}, {rgb[2]}\n")
 	return None
 
@@ -144,18 +142,20 @@ def convert_hex_into_rgb(
 
 def write_bus_lines_csv(
 		output:list[tuple[str, str,list[str]]],
+		is_IDF_Area_Mode:bool
 )->None:
 	for line in output:
 		bus_line_path = REDUCED_DATA_PATH/f"{line[0]}.txt"
-		fill_stop_into_bus_line_csv(bus_line_path, line)
+		fill_stop_into_bus_line_csv(bus_line_path, line, is_IDF_Area_Mode)
 	return None
 
 def fill_stop_into_bus_line_csv(
 		file_path:Path,
-		line:tuple[str,str, list[str]]
+		line:tuple[str,str, list[str]],
+		is_IDF_Area_Mode:bool
 )->None:
 	with open(file_path, "w") as f:
 		f.write(f"{line[0]}\n")
-		for stop in line[1+(ZONE_MODE=="P")]:
+		for stop in line[1+is_IDF_Area_Mode]:
 			f.write(f"{stop}\n")
 	return None

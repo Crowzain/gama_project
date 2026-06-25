@@ -230,7 +230,7 @@ global {
 		create busLine from:file_lines with:[route_id::string(read ('name')), color::rgb([read ('r'), read ('g'), read ('b')])];
 		
 		do filter_stops;
-		//do initialize_buses(buses_nb_per_line);
+		do initialize_buses(buses_nb_per_line);
 		ask stop{
 			do call_passenger_factory;
 		}

@@ -24,10 +24,11 @@ Options:
 * `--stops-threshold-line=#value`: minimum stops on the line in the area *(value is 20 by default)*
 * `--nb-lines-max=#value`: maximum of bus lines selected in the area *(value is 100 by default)*
 * `--create-db`: flag whether the database is written (or overwritten)
-* `--place=#value`: name of a place in the Île-de-France area where you can work *(value is 10th arrondissement by default)*
+* `--place=#value`: name of a place in the Île-de-France, France or in Hanoi, Vietnam, areas where you can work *(value is a area including the French quarter in Hanoi by default)*
 * `--clean`: flag whether to delete the written data files
+* `--is-IDF-Area-Mode`: flag whether to work with Île de France dataset or Hanoi's
 
-This script also creates csv files related to lines, and smaller files according to a smaller working zone (10th arrondissement)
+This script also creates csv files related to lines, and smaller files according to a smaller working zone provided by the `--place` option
 into `reduced_data` folder.
 
 ### Connect to the MySQL database

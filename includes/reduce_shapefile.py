@@ -16,11 +16,12 @@ def create_reduced_data_repertory()->None:
 def reduce_shapefiles(
 		db_connector:DBConnector,
 		place:str|box,
+		is_IDF_Area_Mode:bool
 	)->None:
 
 	db_connector.con.execute("INSTALL spatial;")
 	db_connector.con.execute("LOAD spatial;")
-	wkb_enveloppe = build_network(db_connector, place)
+	wkb_enveloppe = build_network(db_connector, place, is_IDF_Area_Mode)
 	reduce_buildings(db_connector, wkb_enveloppe)
 
 	return None
@@ -28,6 +29,7 @@ def reduce_shapefiles(
 def build_network(
 		db_connector:DBConnector,
 		place:str|box,
+		is_IDF_Area_Mode:bool,
 		reduced_roads_path:Path|str|None=None,
 		reduced_intersections_path:Path|str|None=None,
 	)->bytes:
@@ -41,7 +43,7 @@ def build_network(
 
 	wkb_enveloppe = get_wkb_enveloppe(road_gdf)
 
-	reduce_stops(db_connector, road_gdf, wkb_enveloppe)
+	reduce_stops(db_connector, road_gdf, wkb_enveloppe, is_IDF_Area_Mode)
 	export_gdfs_to_shapefiles(intersection_gdf, road_gdf, reduced_roads_path, reduced_intersections_path)
 	return wkb_enveloppe
 
@@ -71,6 +73,7 @@ def reduce_stops(
 		db_connector:DBConnector,
 		road_gdf:gpd.GeoDataFrame,
 		wkb_enveloppe:bytes,
+		is_IDF_Area_Mode:bool,
 		reduced_stops_path:Path|str|None=None,
 		stops_threshold_line:int=5,
 		nb_lines_max:int=100,
@@ -78,7 +81,7 @@ def reduce_stops(
 	if reduced_stops_path is None:
 		clear_files(REDUCED_DATA_PATH, "*reduced_stops*")
 		reduced_stops_path = REDUCED_DATA_PATH / "reduced_stops.shp"
-	if ZONE_MODE == "P":
+	if is_IDF_Area_Mode:
 		stop_gdf = db_connector.con.execute("""
 			WITH 
 				filtered_stops AS (
@@ -137,7 +140,7 @@ def reduce_stops(
 			"nb_lines": nb_lines_max
 		}
 	).df()
-	elif "H":
+	else:
 		stop_gdf = db_connector.con.execute("""WITH 
 			filtered_stops AS (
 				SELECT stop_id, stop_lat, stop_lon
@@ -194,17 +197,15 @@ def reduce_stops(
 					"nb_lines": nb_lines_max
 				}
 			).df()
-	else:
-		raise ValueError("Unknown Zone Mode")
 	stop_gdf = gpd.GeoDataFrame(stop_gdf)
-	print(stop_gdf.head())
 	stop_gdf.geometry = gpd.points_from_xy(stop_gdf['x'], stop_gdf['y'], crs=4326)
-	assert len(stop_gdf)
+	
 	rows_to_add = []
 	indices_to_drop = []
 	for stop in stop_gdf.itertuples():
 		edges_list = get_associated_edges_with_stop(stop, road_gdf)
 		insert_stop_into_road_gdf(stop, stop_gdf, road_gdf, edges_list, rows_to_add, indices_to_drop)			
+	
 	stop_gdf.to_file(reduced_stops_path)
 	road_gdf = road_gdf.drop(index=indices_to_drop)
 	gdf_with_inserted_row = gpd.GeoDataFrame(rows_to_add, crs=4326)
@@ -353,7 +354,7 @@ def reduce_buildings(
 )->None:
 	
 	if building_path is None:
-		building_path = SHAPEFILE_REPERTORY_PATH / "gis_osm_buildings_a_free_1.shp"
+		building_path = SHAPEFILE_REPERTORY_PATH_HANOI / "gis_osm_buildings_a_free_1.shp"
 	if reduced_building_path is None:
 		clear_files(REDUCED_DATA_PATH, "*reduced_buildings*")
 		reduced_building_path = REDUCED_DATA_PATH / "reduced_buildings.shp"
@@ -380,7 +381,7 @@ def reduce_intersections(
 		reduced_intersections_path:Path|str|None=None,
 )->None:
 	if intersections_path is None:
-		intersections_path = SHAPEFILE_REPERTORY_PATH / "gis_osm_traffic_free_1.shp"
+		intersections_path = SHAPEFILE_REPERTORY_PATH_HANOI / "gis_osm_traffic_free_1.shp"
 	if reduced_intersections_path is None:
 		clear_files(REDUCED_DATA_PATH, "*reduced_intersections*")
 		reduced_intersections_path = REDUCED_DATA_PATH / "reduced_intersections.shp"
