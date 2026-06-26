@@ -3,7 +3,6 @@ from DB_Connectors import DBConnector
 import numpy as np
 
 def write_bus_stop_csv(
-	place,
 	db_connector:DBConnector,
 	is_IDF_Area_Mode:bool,
 	stops_threshold_line:int=20,

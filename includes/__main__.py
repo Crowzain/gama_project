@@ -90,7 +90,6 @@ if __name__=="__main__":
 	
 	reduce_shapefiles(cli_dict["db"], cli_dict["place"], cli_dict["is_IDF_Area_Mode"])
 	write_bus_stop_csv(
-		cli_dict["place"], 
 		cli_dict["db"], 
 		cli_dict["is_IDF_Area_Mode"],
 		stops_threshold_line=cli_dict["stops_threshold_line"], 
