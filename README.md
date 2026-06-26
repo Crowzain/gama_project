@@ -26,7 +26,7 @@ Options:
 * `--create-db`: flag whether the database is written (or overwritten)
 * `--place=#value`: name of a place in the Île-de-France, France or in Hanoi, Vietnam, areas where you can work *(value is a area including the French quarter in Hanoi by default)*
 * `--clean`: flag whether to delete the written data files
-* `--is-IDF-Area-Mode`: flag whether to work with Île de France dataset or Hanoi's
+* `--IDF`: flag whether to work with Île de France dataset or Hanoi's
 
 This script also creates csv files related to lines, and smaller files according to a smaller working zone provided by the `--place` option
 into `reduced_data` folder.

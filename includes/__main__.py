@@ -9,11 +9,11 @@ from DB_Connectors import DuckDB_Connector, SQLite_Connector, MySQL_Connector
 def read_cli_option()->dict:
 
 	verbose = False
-	db = DuckDB_Connector()
+	db = None
 	stops_threshold_line = 5
 	nb_lines_max = 100
 	create_db_flag = False
-	place = DEFAULT_BOX_HANOI
+	place = None
 	clean = False
 	is_IDF_Area_Mode = False
 
@@ -23,7 +23,7 @@ def read_cli_option()->dict:
 		"verbose", "duckdb", "mysql", "sqlite",
 		"create-db", "stops-threshold-line=", 
 		"nb-lines-max=", "place=", "clean",
-		"is-IDF-Area-Mode"
+		"IDF"
 		]
 
 	dict_options = {
@@ -52,8 +52,12 @@ def read_cli_option()->dict:
 				place = currentVal
 			elif currentArg == "--clean":
 				clean = True
-			elif currentArg == "--is-IDF-Area-Mode":
+			elif currentArg == "--IDF":
 				is_IDF_Area_Mode = True
+	if place is None:
+		place = DEFAULT_BOX_10_TH if is_IDF_Area_Mode else DEFAULT_BOX_HANOI
+	if db is None:
+		db = DuckDB_Connector()
 
 	return {
 			"verbose": verbose, 
@@ -80,18 +84,20 @@ if __name__=="__main__":
 
 	area_mode = IDF_Area_Mode(cli_dict["place"]) if cli_dict["is_IDF_Area_Mode"] else Hanoi_Area_Mode(cli_dict["place"])
 
+	current_folder = Path()
+	
 	if cli_dict["clean"]:
 		clear_files(REDUCED_DATA_PATH, "*")
-		current_folder = Path()
 		clear_files(current_folder, "*.db")
 		sys.exit("Workspace has been successfully cleared")
-	if cli_dict["create_db_flag"]:
-		create_tables(cli_dict["db"], verbose=cli_dict["verbose"], input_path=area_mode.gtfs_repertory_path)
 	
-	reduce_shapefiles(cli_dict["db"], cli_dict["place"], cli_dict["is_IDF_Area_Mode"])
+	if cli_dict["create_db_flag"]:
+		create_tables(cli_dict["db"], area_mode, verbose=cli_dict["verbose"], input_path=area_mode.gtfs_repertory_path)
+	
+	reduce_shapefiles(cli_dict["db"], cli_dict["place"], area_mode)
 	write_bus_stop_csv(
 		cli_dict["db"], 
-		cli_dict["is_IDF_Area_Mode"],
+		area_mode,
 		stops_threshold_line=cli_dict["stops_threshold_line"], 
 		nb_lines_max=cli_dict["nb_lines_max"]
 	)

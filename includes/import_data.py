@@ -62,7 +62,7 @@ class Area_Mode(abc.ABC):
 			print("Shapefiles repertory does already exist")
 		return None
 	
-	def set_default_shapefile_repertory_path(self, stem:str)->Path|None:
+	def get_default_shapefile_repertory_path(self, stem:str)->Path|None:
 		pattern = re.compile(f"^{stem}-[0-9]+.*.shp$")
 		for file in PROJECT_ROOT.iterdir():
 			if pattern.match(file.name) is not None:
@@ -93,7 +93,7 @@ class IDF_Area_Mode(Area_Mode):
 		if gtfs_repertory_path is None: gtfs_repertory_path = PROJECT_ROOT / "IDFM-gtfs"
 
 		if shapefile_repertory_path is None:
-			self.set_default_shapefile_repertory_path("ile-de-france")
+			shapefile_repertory_path = self.get_default_shapefile_repertory_path("ile-de-france")
 		
 		super().__init__(
 			place, 
@@ -140,7 +140,7 @@ class Hanoi_Area_Mode(Area_Mode):
 		if gtfs_repertory_path is None: gtfs_repertory_path = PROJECT_ROOT / "hanoi_gtfs_am"
 
 		if shapefile_repertory_path is None:
-			self.set_default_shapefile_repertory_path("hanoi")
+			shapefile_repertory_path = self.get_default_shapefile_repertory_path("hanoi")
 		
 		super().__init__(
 			place, 

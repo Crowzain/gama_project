@@ -1,4 +1,5 @@
 from config import *
+from import_data import Area_Mode
 import duckdb as dd
 import os
 import abc
@@ -114,19 +115,14 @@ class MySQL_Connector(DBConnector):
 
 def create_tables(
 		db_connector:DBConnector,
+		area_mode:Area_Mode,
 		input_path:str|Path|None=None,
 		tables:Iterable[str]|None=None,
 		verbose:bool=False,
 		box:box|None=None
 	)->None:
-	if input_path is None:
-		input_path = HANOI_GTFS_REPERTORY_PATH
-	else:
-		if isinstance(input_path, str): 
-			input_path = Path(input_path) 
-		if not input_path.exists():
-			raise BaseException(f"input path {input_path} does not exist.")
-		
+	input_path = area_mode.gtfs_repertory_path
+
 	if tables is None:
 		tables = map((lambda x: x.stem), input_path.rglob('*.txt'))
 
@@ -135,7 +131,7 @@ def create_tables(
 			print(table)
 		if "stops" == table and box is not None:
 			create_table_query = f"""
-				CREATE OR REPLACE TABLE {f"{db_connector.prefix}.{table}" if db_connector.prefix is not None else table} AS 
+				CREATE OR REPLACE TABLE {type(area_mode).__name__}_{f"{db_connector.prefix}.{table}" if db_connector.prefix is not None else table} AS 
 					SELECT * FROM read_csv($input_file)
 					WHERE lon>=$left AND lon<=$right AND stop_lat>=$bottom AND stop_lat<=$top;
 			"""
@@ -148,7 +144,7 @@ def create_tables(
 				"top": box.top})
 		else:
 			create_table_query = f"""
-				CREATE OR REPLACE TABLE {f"{db_connector.prefix}.{table}" if db_connector.prefix is not None else table} AS 
+				CREATE OR REPLACE TABLE {type(area_mode).__name__}_{f"{db_connector.prefix}.{table}" if db_connector.prefix is not None else table} AS 
 					SELECT * FROM read_csv($input_file)
 			"""
 			db_connector.con.execute(create_table_query, parameters={"input_file": f"{input_path/table}.txt",})

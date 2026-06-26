@@ -1,5 +1,6 @@
 from config import *
 from DB_Connectors import DBConnector
+from import_data import Area_Mode, IDF_Area_Mode, Hanoi_Area_Mode
 
 import osmnx
 import pandas as pd
@@ -16,20 +17,19 @@ def create_reduced_data_repertory()->None:
 def reduce_shapefiles(
 		db_connector:DBConnector,
 		place:str|box,
-		is_IDF_Area_Mode:bool
+		area_mode:Area_Mode
 	)->None:
-
 	db_connector.con.execute("INSTALL spatial;")
 	db_connector.con.execute("LOAD spatial;")
-	wkb_enveloppe = build_network(db_connector, place, is_IDF_Area_Mode)
-	reduce_buildings(db_connector, wkb_enveloppe)
+	wkb_enveloppe = build_network(db_connector, place, area_mode)
+	reduce_buildings(db_connector, wkb_enveloppe, area_mode)
 
 	return None
 
 def build_network(
 		db_connector:DBConnector,
 		place:str|box,
-		is_IDF_Area_Mode:bool,
+		area_mode:Area_Mode,
 		reduced_roads_path:Path|str|None=None,
 		reduced_intersections_path:Path|str|None=None,
 	)->bytes:
@@ -40,10 +40,9 @@ def build_network(
 	else:
 		raise TypeError("Provided input type is neither str nor box")
 	#intersection_gdf.index = intersection_gdf.index.astype("str")
-
 	wkb_enveloppe = get_wkb_enveloppe(road_gdf)
 
-	reduce_stops(db_connector, road_gdf, wkb_enveloppe, is_IDF_Area_Mode)
+	reduce_stops(db_connector, road_gdf, wkb_enveloppe, area_mode)
 	export_gdfs_to_shapefiles(intersection_gdf, road_gdf, reduced_roads_path, reduced_intersections_path)
 	return wkb_enveloppe
 
@@ -73,7 +72,7 @@ def reduce_stops(
 		db_connector:DBConnector,
 		road_gdf:gpd.GeoDataFrame,
 		wkb_enveloppe:bytes,
-		is_IDF_Area_Mode:bool,
+		area_mode:Area_Mode,
 		reduced_stops_path:Path|str|None=None,
 		stops_threshold_line:int=5,
 		nb_lines_max:int=100,
@@ -81,34 +80,35 @@ def reduce_stops(
 	if reduced_stops_path is None:
 		clear_files(REDUCED_DATA_PATH, "*reduced_stops*")
 		reduced_stops_path = REDUCED_DATA_PATH / "reduced_stops.shp"
-	if is_IDF_Area_Mode:
-		stop_gdf = db_connector.con.execute("""
+	prefix = type(area_mode).__name__
+	if isinstance(area_mode, IDF_Area_Mode):
+		stop_gdf = db_connector.con.execute(f"""
 			WITH 
 				filtered_stops AS (
 					SELECT stop_id, stop_lat, stop_lon
-					FROM stops
+					FROM {prefix}_stops
 					WHERE ST_Contains(ST_GeomFromWKB($wkb_enveloppe), ST_Point(stop_lon, stop_lat))
 				),
 			
 				candidate_services AS (
-					SELECT trip_id FROM trips
-					JOIN calendar USING(service_id)
+					SELECT trip_id FROM {prefix}_trips
+					JOIN {prefix}_calendar USING(service_id)
 					WHERE MONDAY AND TUESDAY AND WEDNESDAY AND THURSDAY AND FRIDAY
 				),
 				
 				candidate_routes AS (
-					SELECT route_id, route_color FROM routes
+					SELECT route_id, route_color FROM {prefix}_routes
 					WHERE route_type=3
 				),
 				
 				filtered_trips AS (
-					SELECT DISTINCT ON(trip_id) trip_id, route_id, route_color FROM trips
+					SELECT DISTINCT ON(trip_id) trip_id, route_id, route_color FROM {prefix}_trips
 					JOIN candidate_services USING(trip_id)
 					JOIN candidate_routes USING(route_id)
 				),
 				
 				candidate_stops AS (
-					SELECT stop_id, trip_id, stop_sequence, stop_lon, stop_lat FROM stop_times
+					SELECT stop_id, trip_id, stop_sequence, stop_lon, stop_lat FROM {prefix}_stop_times
 					JOIN filtered_stops USING(stop_id)
 					WHERE CAST (departure_time[1:2] AS INT)>=7 AND CAST(arrival_time[1:2] AS INT)<=18
 				),
@@ -140,33 +140,33 @@ def reduce_stops(
 			"nb_lines": nb_lines_max
 		}
 	).df()
-	else:
-		stop_gdf = db_connector.con.execute("""WITH 
+	elif isinstance(area_mode, Hanoi_Area_Mode):
+		stop_gdf = db_connector.con.execute(f"""WITH 
 			filtered_stops AS (
 				SELECT stop_id, stop_lat, stop_lon
-				FROM stops
+				FROM {prefix}_stops
 				WHERE ST_Contains(ST_GeomFromWKB($wkb_enveloppe), ST_Point(stop_lon, stop_lat))
 			),
 		
 			candidate_services AS (
-				SELECT trip_id FROM trips
-				JOIN calendar USING(service_id)
+				SELECT trip_id FROM {prefix}_trips
+				JOIN {prefix}_calendar USING(service_id)
 				WHERE monday AND tuesday AND wednesday AND thursday AND friday
 			),
 			
 			candidate_routes AS (
-				SELECT route_id FROM routes
+				SELECT route_id FROM {prefix}_routes
 				WHERE route_type=3
 			),
 			
 			filtered_trips AS (
-				SELECT DISTINCT ON(trip_id) trip_id, route_id FROM trips
+				SELECT DISTINCT ON(trip_id) trip_id, route_id FROM {prefix}_trips
 				JOIN candidate_services USING(trip_id)
 				JOIN candidate_routes USING(route_id)
 			),
 			
 			candidate_stops AS (
-				SELECT stop_id, trip_id, stop_sequence, stop_lon, stop_lat FROM stop_times
+				SELECT stop_id, trip_id, stop_sequence, stop_lon, stop_lat FROM {prefix}_stop_times
 				JOIN filtered_stops USING(stop_id)
 				WHERE departure_time>='7:00:00' AND arrival_time <='18:00:00'
 			),
@@ -197,9 +197,10 @@ def reduce_stops(
 					"nb_lines": nb_lines_max
 				}
 			).df()
+	else:
+		raise KeyError("area mode type unknown")
 	stop_gdf = gpd.GeoDataFrame(stop_gdf)
 	stop_gdf.geometry = gpd.points_from_xy(stop_gdf['x'], stop_gdf['y'], crs=4326)
-	
 	rows_to_add = []
 	indices_to_drop = []
 	for stop in stop_gdf.itertuples():
@@ -348,17 +349,16 @@ def export_gdfs_to_shapefiles(
 def reduce_buildings(
 		db_connector:DBConnector,
 		wkb_enveloppe:bytes,
-		building_path:Path|str|None=None,
+		area_mode:Area_Mode,
 		reduced_building_path:Path|str|None=None,
 		apartments_office_only:bool=False
 )->None:
 	
-	if building_path is None:
-		building_path = SHAPEFILE_REPERTORY_PATH_HANOI / "gis_osm_buildings_a_free_1.shp"
 	if reduced_building_path is None:
 		clear_files(REDUCED_DATA_PATH, "*reduced_buildings*")
 		reduced_building_path = REDUCED_DATA_PATH / "reduced_buildings.shp"
 		
+	building_path = area_mode.shapefile_repertory_path / "gis_osm_buildings_a_free_1.shp"
 	db_connector.con.execute(
 		f"""
 			COPY (SELECT * FROM ST_ReadSHP($input_file)
@@ -377,15 +377,14 @@ def reduce_buildings(
 def reduce_intersections(
 		db_connector:DBConnector,
 		box:box,
-		intersections_path:Path|str|None=None,
+		area_mode:Area_Mode,
 		reduced_intersections_path:Path|str|None=None,
 )->None:
-	if intersections_path is None:
-		intersections_path = SHAPEFILE_REPERTORY_PATH_HANOI / "gis_osm_traffic_free_1.shp"
 	if reduced_intersections_path is None:
 		clear_files(REDUCED_DATA_PATH, "*reduced_intersections*")
 		reduced_intersections_path = REDUCED_DATA_PATH / "reduced_intersections.shp"
 	
+	intersections_path = area_mode.shapefile_repertory_path / "gis_osm_traffic_free_1.shp"
 	db_connector.con.execute(
 		f"""
 			COPY (SELECT * FROM ST_ReadSHP($input_file)
