@@ -395,8 +395,8 @@ species bus parent:vehicle_base{
 	
 	init{
 		max_acceleration <- 1#m/#s/#s;
-		//vehicle_length <- 12#m;
-		vehicle_length <- 12#mm;
+		vehicle_length <- 12#m;
+		//vehicle_length <- 12#mm;
 		max_speed <- 70 #km/#h;
 		num_lanes_occupied <- 2;
 		proba_use_linked_road <- 0.0;
@@ -478,8 +478,8 @@ species motorbike parent:vehicle_base{
 	
 	init{
 		max_acceleration <- 2#m/#s/#s;
-		//vehicle_length <- 1.89#m;
-		vehicle_length <- 1.89#mm;
+		vehicle_length <- 1.89#m;
+		//vehicle_length <- 1.89#mm;
 		max_speed <- 70 #km/#h;
 		num_lanes_occupied <- 1;
 		location <- any(road_graph.vertices);
@@ -501,8 +501,8 @@ species car parent:vehicle_base{
 	// example Clio V
 	init{
 		max_acceleration <- 1.62#m/#s/#s;
-		//vehicle_length <- 4.05#m;
-		vehicle_length <- 4.05#mm;
+		vehicle_length <- 4.05#m;
+		//vehicle_length <- 4.05#mm;
 		max_speed <- 160 #km/#h;
 		num_lanes_occupied <- 2;
 		location <- any(road_graph.vertices);

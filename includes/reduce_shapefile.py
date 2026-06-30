@@ -23,7 +23,7 @@ def reduce_shapefiles(
 	db_connector.con.execute("LOAD spatial;")
 	wkb_enveloppe = build_network(db_connector, place, area_mode)
 	reduce_buildings(db_connector, wkb_enveloppe, area_mode)
-
+	reduce_water(db_connector, wkb_enveloppe, area_mode)
 	return None
 
 def build_network(
@@ -55,7 +55,7 @@ def create_gdfs_from_box(box:box)->tuple[gpd.GeoDataFrame, gpd.GeoDataFrame]:
 			box.top
 			),
 		network_type="drive",
-		simplify=False
+		simplify=True
 	)
 	return osmnx.convert.graph_to_gdfs(graph)
 
@@ -314,17 +314,34 @@ def split_curve(
 		stop,
 		original_linestring:shapely.LineString,
 		distance_from_linestring:float=0.001
-)->tuple[shapely.LineString, shapely.LineString]:
+)->tuple[shapely.LineString, shapely.LineString]|None:
 	snapped_edge_geometry = shapely.snap(original_linestring, stop.geometry, distance_from_linestring)
-	i = 0
 	geometry_list_length = len(snapped_edge_geometry.coords)
 	stop_coord = (stop.geometry.x, stop.geometry.y)
-
-	while i < geometry_list_length-1 and snapped_edge_geometry.coords[i] != stop_coord:
+	if snapped_edge_geometry.coords[0] != original_linestring.coords[0]:
+		first_linestring = shapely.LineString([original_linestring.coords[0], stop_coord])
+		second_linestring = shapely.LineString([stop_coord] + original_linestring.coords[1:])
+		return first_linestring, second_linestring
+	i = 1
+	while i < geometry_list_length-1 and snapped_edge_geometry.coords[i] != original_linestring.coords[i]:
 		i+=1
-	first_linestring = shapely.LineString(snapped_edge_geometry.coords[:i+1])
-	second_linestring = shapely.LineString(snapped_edge_geometry.coords[i:])
-	return first_linestring, second_linestring
+	if i < geometry_list_length-1:
+		original_distance_to_previous_pt =shapely.distance(
+			shapely.Point(snapped_edge_geometry.coords[i-1]), 
+			shapely.Point(snapped_edge_geometry.coords[i])
+		)
+		snapped_distance_to_previous_pt = shapely.distance(
+			shapely.Point(snapped_edge_geometry.coords[i-1]), 
+			shapely.Point(stop_coord)
+		)
+		if  original_distance_to_previous_pt > snapped_distance_to_previous_pt:
+			first_linestring = shapely.LineString(snapped_edge_geometry.coords[:i+1])
+			second_linestring = shapely.LineString([stop_coord] + original_linestring.coords[i:])
+		else:
+			first_linestring = shapely.LineString(original_linestring.coords[:i+1]+[stop_coord])
+			second_linestring = shapely.LineString(snapped_edge_geometry.coords[i:])
+		return first_linestring, second_linestring
+	return None
 
 def export_gdfs_to_shapefiles(
 		intersection_gdf:gpd.GeoDataFrame,
@@ -376,7 +393,7 @@ def reduce_buildings(
 
 def reduce_intersections(
 		db_connector:DBConnector,
-		box:box,
+		wkb_enveloppe:bytes,
 		area_mode:Area_Mode,
 		reduced_intersections_path:Path|str|None=None,
 )->None:
@@ -388,7 +405,7 @@ def reduce_intersections(
 	db_connector.con.execute(
 		f"""
 			COPY (SELECT * FROM ST_ReadSHP($input_file)
-			WHERE ST_Contains(ST_MakeEnvelope($left, $bottom, $right, $top), geom) 
+			WHERE ST_Contains(ST_GeomFromWKB($wkb_enveloppe), geom)
 			AND code BETWEEN 5201 AND 5203)
 			TO $output_file
 			WITH (FORMAT gdal, DRIVER 'ESRI Shapefile', LAYER_CREATION_OPTIONS 'WRITE_BBOX=YES', SRS 'EPSG:4326');
@@ -396,10 +413,33 @@ def reduce_intersections(
 		{
 			"input_file": str(intersections_path),
 			"output_file": str(reduced_intersections_path),
-			"left": box.left, 
-			"bottom": box.bottom, 
-			"right": box.right, 
-			"top": box.top
+			"wkb_enveloppe": wkb_enveloppe
+		}
+	)
+	return None
+
+def reduce_water(
+		db_connector:DBConnector,
+		wkb_enveloppe:bytes,
+		area_mode:Area_Mode,
+		reduced_water_path:Path|str|None=None,
+)->None:
+	if reduced_water_path is None:
+		clear_files(REDUCED_DATA_PATH, "*reduced_water*")
+		reduced_water_path = REDUCED_DATA_PATH / "reduced_water.shp"
+	
+	water_path = area_mode.shapefile_repertory_path / "gis_osm_water_a_free_1.shp"
+	db_connector.con.execute(
+		f"""
+			COPY (SELECT * FROM ST_ReadSHP($input_file)
+			WHERE ST_Contains(ST_GeomFromWKB($wkb_enveloppe), geom))
+			TO $output_file
+			WITH (FORMAT gdal, DRIVER 'ESRI Shapefile', LAYER_CREATION_OPTIONS 'WRITE_BBOX=YES', SRS 'EPSG:4326');
+		""",
+		{
+			"input_file": str(water_path),
+			"output_file": str(reduced_water_path),
+			"wkb_enveloppe": wkb_enveloppe
 		}
 	)
 	return None
