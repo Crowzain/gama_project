@@ -24,7 +24,7 @@ Options:
 * `--stops-threshold-line=#value`: minimum stops on the line in the area *(value is 20 by default)*
 * `--nb-lines-max=#value`: maximum of bus lines selected in the area *(value is 100 by default)*
 * `--create-db`: flag whether the database is written (or overwritten)
-* `--place=#value`: name of a place in the Île-de-France, France or in Hanoi, Vietnam, areas where you can work *(value is a area including the French quarter in Hanoi by default)*
+* `--place=#value`: name of a place in the Île-de-France, France or in Hanoi, Vietnam, areas where you can work *(value is a area including the Ring Road 01, (Vành Đai 1) in Hanoi by default)*
 * `--clean`: flag whether to delete the written data files
 * `--IDF`: flag whether to work with Île de France dataset or Hanoi's
 
@@ -49,7 +49,7 @@ $> docker compose down
 > if you do not want persistant database, you can delete it by adding `-v` option.
 
 ## 3. Fix me
-* [*] use real Linestring (curves) instead of segments (Linestring of size 2)
+* [x] use real Linestring (curves) instead of segments (Linestring of size 2)
 * [ ] some vehicles still can get stuck, maybe an issue related to intersection priorities
 
 ## 4. To do and perspectives
