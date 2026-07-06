@@ -393,11 +393,13 @@ species bus parent:vehicle_base{
 	// miscellaneous attributes
 	float stop_time<-20#s;
 	
+	
+	// example VinFast EB8
 	init{
-		max_acceleration <- 1#m/#s/#s;
-		vehicle_length <- 12#m;
+		max_acceleration <- 3.6*281/13.5/80#m/#s/#s;
+		vehicle_length <- 8.610#m;
 		//vehicle_length <- 12#mm;
-		max_speed <- 70 #km/#h;
+		max_speed <- 80 #km/#h;
 		num_lanes_occupied <- 2;
 		proba_use_linked_road <- 0.0;
 	}
@@ -476,11 +478,12 @@ species motorbike parent:vehicle_base{
 	
 	rgb color <- #red const:true;
 	
+	// example VinFast Vento Neo
 	init{
-		max_acceleration <- 2#m/#s/#s;
-		vehicle_length <- 1.89#m;
-		//vehicle_length <- 1.89#mm;
-		max_speed <- 70 #km/#h;
+		max_acceleration <- 1.13#m/#s/#s;
+		vehicle_length <- 1.86#m;
+		//vehicle_length <- 1.86#mm;
+		max_speed <- 78 #km/#h;
 		num_lanes_occupied <- 1;
 		location <- any(road_graph.vertices);
 	}
@@ -498,12 +501,12 @@ species car parent:vehicle_base{
 	
 	rgb color <- #darkcyan const:true;
 	
-	// example Clio V
+	// example VinFast VF3 (EV)
 	init{
-		max_acceleration <- 1.62#m/#s/#s;
-		vehicle_length <- 4.05#m;
-		//vehicle_length <- 4.05#mm;
-		max_speed <- 160 #km/#h;
+		max_acceleration <- 1.0#m/#s/#s;
+		vehicle_length <- 3.190#m;
+		//vehicle_length <- 3.190#mm;
+		max_speed <- 110 #km/#h;
 		num_lanes_occupied <- 2;
 		location <- any(road_graph.vertices);
 	}
