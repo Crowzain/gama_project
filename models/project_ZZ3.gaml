@@ -493,6 +493,14 @@ species motorbike parent:vehicle_base{
 	}
 	
 	reflex move{
+		if current_road != nil and current_road.linked_road != nil{
+			if length(current_road.target_node.roads_out)>=2{
+				int roads_out_number <- length(current_target.roads_out)-1;
+				map<road, float> proba_roads <- (current_target.roads_out as_map (each::1/roads_out_number));
+				proba_roads[current_road.linked_road] <- 0.0;
+			}
+			
+		}
 		do drive_random graph:road_graph;		
 	}
 }
@@ -518,8 +526,8 @@ species car parent:vehicle_base{
 	reflex move{
 		if current_road != nil and current_road.linked_road != nil{
 			if length(current_road.target_node.roads_out)>=2{
-				int l <- length(current_target.roads_out)-1;
-				map<road, float> proba_roads <- (current_target.roads_out as_map (each::1/l));
+				int roads_out_number <- length(current_target.roads_out)-1;
+				map<road, float> proba_roads <- (current_target.roads_out as_map (each::1/roads_out_number));
 				proba_roads[current_road.linked_road] <- 0.0;
 			}
 			
