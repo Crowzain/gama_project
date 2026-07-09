@@ -30,8 +30,9 @@ def build_network(
 		db_connector:DBConnector,
 		place:str|box,
 		area_mode:Area_Mode,
-		reduced_roads_path:Path|str|None=None,
-		reduced_intersections_path:Path|str|None=None,
+		reduced_roads_path:Path|None=None,
+		reduced_intersections_path:Path|None=None,
+		reduced_stops_path:Path|None=None,
 	)->bytes:
 	if isinstance(place, str): 
 		intersection_gdf, road_gdf = create_gdfs_from_place(place)
@@ -39,11 +40,18 @@ def build_network(
 		intersection_gdf, road_gdf = create_gdfs_from_box(place)
 	else:
 		raise TypeError("Provided input type is neither str nor box")
-	#intersection_gdf.index = intersection_gdf.index.astype("str")
 	wkb_enveloppe = get_wkb_enveloppe(road_gdf)
+	stops_gdf = reduce_stops(db_connector, wkb_enveloppe, area_mode)
 
-	reduce_stops(db_connector, road_gdf, wkb_enveloppe, area_mode)
-	export_gdfs_to_shapefiles(intersection_gdf, road_gdf, reduced_roads_path, reduced_intersections_path)
+	#road_gdf, stops_gdf = insert_all_stops_into_road_gdf(stops_gdf, road_gdf)
+
+	export_gdfs_to_shapefiles(
+		road_gdf, 
+		intersection_gdf, 
+		stops_gdf, 
+		reduced_roads_path, 
+		reduced_intersections_path, 
+		reduced_stops_path)
 	return wkb_enveloppe
 
 def create_gdfs_from_box(box:box)->tuple[gpd.GeoDataFrame, gpd.GeoDataFrame]:
@@ -64,22 +72,18 @@ def create_gdfs_from_place(place:str)->tuple[gpd.GeoDataFrame, gpd.GeoDataFrame]
 	graph = osmnx.graph.graph_from_place(
 		place,
 		network_type="drive",
-		simplify=False
+		simplify=True
 	)
 	return osmnx.convert.graph_to_gdfs(graph)
 
 def reduce_stops(
 		db_connector:DBConnector,
-		road_gdf:gpd.GeoDataFrame,
 		wkb_enveloppe:bytes,
 		area_mode:Area_Mode,
-		reduced_stops_path:Path|str|None=None,
 		stops_threshold_line:int=5,
 		nb_lines_max:int=100,
 )->gpd.GeoDataFrame:
-	if reduced_stops_path is None:
-		clear_files(REDUCED_DATA_PATH, "*reduced_stops*")
-		reduced_stops_path = REDUCED_DATA_PATH / "reduced_stops.shp"
+	
 	prefix = type(area_mode).__name__
 	if isinstance(area_mode, IDF_Area_Mode):
 		stop_gdf = db_connector.con.execute(f"""
@@ -201,50 +205,53 @@ def reduce_stops(
 		raise KeyError("area mode type unknown")
 	stop_gdf = gpd.GeoDataFrame(stop_gdf)
 	stop_gdf.geometry = gpd.points_from_xy(stop_gdf['x'], stop_gdf['y'], crs=4326)
-	rows_to_add = []
-	indices_to_drop = []
-	for stop in stop_gdf.itertuples():
-		edges_list = get_associated_edges_with_stop(stop, road_gdf)
-		insert_stop_into_road_gdf(stop, stop_gdf, road_gdf, edges_list, rows_to_add, indices_to_drop)			
-	
-	stop_gdf.to_file(reduced_stops_path)
-	road_gdf = road_gdf.drop(index=indices_to_drop)
-	gdf_with_inserted_row = gpd.GeoDataFrame(rows_to_add, crs=4326)
-	road_gdf = pd.concat([road_gdf, gdf_with_inserted_row])
 	return stop_gdf
 
 def get_wkb_enveloppe(road_gdf:gpd.GeoDataFrame)->bytes:
 	return shapely.to_wkb(road_gdf[["geometry"]].union_all().convex_hull)
 
-def insert_stop_into_road_gdf(
+def insert_all_stops_into_road_gdf(
+		stops_gdf:gpd.GeoDataFrame,
+		road_gdf: gpd.GeoDataFrame
+	)->tuple[gpd.GeoDataFrame, gpd.GeoDataFrame]:
+	rows_to_add = []
+	indices_to_drop = []
+	for stop in stops_gdf.itertuples():
+		edges_list = get_associated_edges_with_stop(stop, road_gdf)
+		stops_gdf = insert_one_stop_into_road_gdf(stop, stops_gdf, road_gdf, edges_list, rows_to_add, indices_to_drop)			
+	road_gdf = road_gdf.drop(index=indices_to_drop)
+	gdf_with_inserted_row = gpd.GeoDataFrame(rows_to_add, crs=4326)
+	road_gdf = pd.concat([road_gdf, gdf_with_inserted_row])
+	return road_gdf, stops_gdf
+
+def insert_one_stop_into_road_gdf(
 		stop,
 		stop_gdf:gpd.GeoDataFrame,
 		road_gdf:gpd.GeoDataFrame,
 		edges_list:list[tuple[int, int, int]],
 		rows_to_add:list[gpd.GeoSeries],
 		indices_to_drop:list[tuple[int, int, int]]
-)->None:
+)->gpd.GeoDataFrame:
 	if len(edges_list)>0:
 
-		split_linestrings_list = split_edges(stop, edges_list, stop_gdf, road_gdf)
-
+		split_linestrings_list, stop_gdf = split_edges(stop, edges_list, stop_gdf, road_gdf)
 		for edge, linestring in zip(edges_list, split_linestrings_list):
 			original = road_gdf.loc[edge[0], edge[1], edge[2]].copy()
 
 			a = original.copy()
 			a["geometry"] = linestring[0]
 			a["length"] = linestring[0].length
-			a.names = (a.name[0], stop.stop_id, a.name[2])
+			a.name = (a.name[0], stop.stop_id, a.name[2])
 			
 			b = original.copy()
 			b["geometry"] = linestring[1]
 			b["length"] = linestring[1].length
-			b.names = (stop.stop_id, b.name[1], b.name[2])
+			b.name = (stop.stop_id, b.name[1], b.name[2])
 			
 			rows_to_add.append(a)
 			rows_to_add.append(b)
 			indices_to_drop.append((edge[0], edge[1], edge[2]))
-	return None
+	return stop_gdf
 
 def get_associated_edges_with_stop(
 		stop,
@@ -254,7 +261,7 @@ def get_associated_edges_with_stop(
 
 	stop_point = stop.geometry
 
-	mask = road_gdf.geometry.dwithin(stop_point, distance_from_linestring)
+	mask = road_gdf.geometry.dwithin(stop_point, distance_from_linestring, align=False)
 	candidates = road_gdf[mask].copy()
 	candidates["dist"] = candidates.geometry.distance(stop_point)
 	candidates = candidates.sort_values("dist")
@@ -277,19 +284,20 @@ def split_edges(
 	edges_list:list[tuple[int, int, int]],
 	stop_gdf:gpd.GeoDataFrame,
 	road_gdf:gpd.GeoDataFrame
-)->list[tuple[shapely.LineString, shapely.LineString]]:
+)->tuple[list[tuple[shapely.LineString, shapely.LineString]], gpd.GeoDataFrame]:
 	split_linestrings_list = []
 	
 	for edge in edges_list:
 		distance = road_gdf.loc[edge[0], edge[1], edge[2]].geometry.project(stop.geometry)
 		projection_on_edge = road_gdf.loc[edge[0], edge[1], edge[2]].geometry.interpolate(distance)
-		
 		stop_gdf.loc[stop.Index, "geometry"] = projection_on_edge
+		stop_gdf.loc[stop.Index, "x"] = projection_on_edge.x
+		stop_gdf.loc[stop.Index, "y"] = projection_on_edge.y
 		edge_geometry = road_gdf.loc[edge].geometry
 		split_linestring_pair = split_linestring(stop, edge_geometry)
 		if split_linestring_pair is not None:
 			split_linestrings_list.append(split_linestring_pair)
-	return split_linestrings_list
+	return split_linestrings_list, stop_gdf
 
 def split_linestring(
 		stop,
@@ -313,7 +321,7 @@ def split_segment(
 def split_curve(
 		stop,
 		original_linestring:shapely.LineString,
-		distance_from_linestring:float=0.001
+		distance_from_linestring:float=0.0001
 )->tuple[shapely.LineString, shapely.LineString]|None:
 	snapped_edge_geometry = shapely.snap(original_linestring, stop.geometry, distance_from_linestring)
 	geometry_list_length = len(snapped_edge_geometry.coords)
@@ -344,10 +352,12 @@ def split_curve(
 	return None
 
 def export_gdfs_to_shapefiles(
-		intersection_gdf:gpd.GeoDataFrame,
 		road_gdf:gpd.GeoDataFrame,
-		reduced_roads_path:Path|str|None=None,
-		reduced_intersections_path:Path|str|None=None,
+		intersection_gdf:gpd.GeoDataFrame,
+		stop_gdf:gpd.GeoDataFrame,
+		reduced_roads_path:Path|None=None,
+		reduced_intersections_path:Path|None=None,
+		reduced_stops_path:Path|None=None,
 )->None:
 	
 	if reduced_roads_path is None:
@@ -358,9 +368,15 @@ def export_gdfs_to_shapefiles(
 		clear_files(REDUCED_DATA_PATH, "*reduced_intersections*")
 		reduced_intersections_path = REDUCED_DATA_PATH / "reduced_intersections.shp"
 
+	if reduced_stops_path is None:
+		clear_files(REDUCED_DATA_PATH, "*reduced_stops*")
+		reduced_stops_path = REDUCED_DATA_PATH / "reduced_stops.shp"
+
 	intersection_gdf.drop(["street_count", "highway"], axis=1).to_file(reduced_intersections_path)
 
 	road_gdf.drop(["bridge", "tunnel"], axis=1).to_file(reduced_roads_path)
+
+	stop_gdf.to_file(reduced_stops_path)
 	return None
 
 def reduce_buildings(

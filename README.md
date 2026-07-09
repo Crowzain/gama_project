@@ -23,6 +23,7 @@ Options:
 * `--sqlite`: use a sqlite database
 * `--stops-threshold-line=#value`: minimum stops on the line in the area *(value is 20 by default)*
 * `--nb-lines-max=#value`: maximum of bus lines selected in the area *(value is 100 by default)*
+* `--download`: flag whether data is downloaded
 * `--create-db`: flag whether the database is written (or overwritten)
 * `--place=#value`: name of a place in the Île-de-France, France or in Hanoi, Vietnam, areas where you can work *(value is a area including the Ring Road 01, (Vành Đai 1) in Hanoi by default)*
 * `--clean`: flag whether to delete the written data files
@@ -49,7 +50,7 @@ $> docker compose down
 > if you do not want persistant database, you can delete it by adding `-v` option.
 
 ## 3. Fix me
-* [x] use real Linestring (curves) instead of segments (Linestring of size 2)
+* [ ] use real Linestring (curves) instead of segments (Linestring of size 2), not correctly fixed yet
 * [ ] some vehicles still can get stuck, maybe an issue related to intersection priorities
 
 ## 4. To do and perspectives

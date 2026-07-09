@@ -12,18 +12,18 @@ def read_cli_option()->dict:
 	db = None
 	stops_threshold_line = 5
 	nb_lines_max = 100
+	download_flag = False
 	create_db_flag = False
 	place = None
 	clean = False
 	is_IDF_Area_Mode = False
 
 	args = sys.argv[1:]
-	options = "v"
+	options = "vd"
 	long_options = [
 		"verbose", "duckdb", "mysql", "sqlite",
-		"create-db", "stops-threshold-line=", 
-		"nb-lines-max=", "place=", "clean",
-		"IDF"
+		"download", "create-db", "stops-threshold-line=", 
+		"nb-lines-max=", "place=", "clean", "IDF"
 		]
 
 	dict_options = {
@@ -46,6 +46,8 @@ def read_cli_option()->dict:
 				stops_threshold_line = int(currentVal)
 			elif currentArg == "--nb-lines-max":
 				nb_lines_max = int(currentVal)
+			elif currentArg in ("--download", "-d"):
+				download_flag = True
 			elif currentArg == "--create-db":
 				create_db_flag = True
 			elif currentArg == "--place":
@@ -64,6 +66,7 @@ def read_cli_option()->dict:
 			"db": db, 
 			"stops_threshold_line": stops_threshold_line,
 			"nb_lines_max": nb_lines_max,
+			"download_data": download_flag, 
 			"create_db_flag": create_db_flag, 
 			"place": place,
 			"clean": clean,
@@ -81,8 +84,18 @@ def clear_files(
 if __name__=="__main__":
 	create_reduced_data_repertory()
 	cli_dict = read_cli_option()
-
-	area_mode = IDF_Area_Mode(cli_dict["place"]) if cli_dict["is_IDF_Area_Mode"] else Hanoi_Area_Mode(cli_dict["place"])
+	if cli_dict["is_IDF_Area_Mode"]:
+		area_mode = IDF_Area_Mode(
+			cli_dict["place"], 
+			load_repertories=cli_dict["download_data"],
+			verbose=cli_dict["verbose"]
+		)  
+	else: 
+		area_mode = Hanoi_Area_Mode(
+			cli_dict["place"],
+			load_repertories=cli_dict["download_data"],
+			verbose=cli_dict["verbose"]
+		)
 
 	current_folder = Path()
 	

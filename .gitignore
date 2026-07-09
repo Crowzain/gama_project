@@ -8,6 +8,5 @@ reduced_data*
 .env
 results/
 *.ipynb
-*.bin
 cache
 *.txt
